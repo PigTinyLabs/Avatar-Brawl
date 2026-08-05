@@ -164,18 +164,19 @@ export default class FightScene extends Phaser.Scene {
     const faceImg = this.add.image(x, y - 40, this.textures.exists(faceKey) ? faceKey : 'face_placeholder');
     faceImg.setDisplaySize(40, 40);
     
-    // Create physics constraint
-    this.matter.add.constraint(torso, head, 40, 0.9, { pointA: { x: 0, y: -25 }, pointB: { x: 0, y: 15 } });
+    // Create physics constraint with length 0 to act as pivot joints
+    this.matter.add.constraint(torso, head, 0, 1, { pointA: { x: 0, y: -25 }, pointB: { x: 0, y: 15 } });
 
     const leftArm = this.matter.add.rectangle(x - 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
     const rightArm = this.matter.add.rectangle(x + 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
-    this.matter.add.constraint(torso, leftArm, 5, 0.9, { pointA: { x: -15, y: -20 }, pointB: { x: 0, y: -15 } });
-    this.matter.add.constraint(torso, rightArm, 5, 0.9, { pointA: { x: 15, y: -20 }, pointB: { x: 0, y: -15 } });
+    this.matter.add.constraint(torso, leftArm, 0, 1, { pointA: { x: -15, y: -20 }, pointB: { x: 0, y: -15 } });
+    this.matter.add.constraint(torso, rightArm, 0, 1, { pointA: { x: 15, y: -20 }, pointB: { x: 0, y: -15 } });
 
     const leftLeg = this.matter.add.rectangle(x - 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
     const rightLeg = this.matter.add.rectangle(x + 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
-    this.matter.add.constraint(torso, leftLeg, 5, 0.9, { pointA: { x: -10, y: 25 }, pointB: { x: 0, y: -20 } });
-    this.matter.add.constraint(torso, rightLeg, 5, 0.9, { pointA: { x: 10, y: 25 }, pointB: { x: 0, y: -20 } });
+    this.matter.add.constraint(torso, leftLeg, 0, 1, { pointA: { x: -10, y: 25 }, pointB: { x: 0, y: -20 } });
+    this.matter.add.constraint(torso, rightLeg, 0, 1, { pointA: { x: 10, y: 25 }, pointB: { x: 0, y: -20 } });
+
 
     // Link image to physics body in update
     if (isMe) {
