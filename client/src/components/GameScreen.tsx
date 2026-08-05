@@ -63,7 +63,7 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
           default: 'matter',
           matter: {
             gravity: { y: 1, x: 0 }, // matter gravity uses different scale
-            debug: false
+            debug: true
           }
         },
         scale: {
@@ -96,8 +96,8 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
     if (roomData.isTraining) {
       initGame({
         players: {
-          'player1': { ...playerData, x: 200, y: 500, hp: 100, isLeft: false, martialArt: playerData.martialArt, state: 'idle' },
-          'dummy': { faceImage: null, martialArt: 'boxing', x: 600, y: 500, hp: 100, isLeft: true, state: 'idle' }
+          'player1': { ...playerData, id: 'player1', x: 200, y: 500, hp: 100, isLeft: false, martialArt: playerData.martialArt, state: 'idle' },
+          'dummy': { id: 'dummy', faceImage: null, martialArt: 'boxing', x: 600, y: 500, hp: 100, isLeft: true, state: 'idle' }
         }
       });
       return;
