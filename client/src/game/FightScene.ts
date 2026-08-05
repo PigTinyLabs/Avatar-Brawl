@@ -43,6 +43,20 @@ export default class FightScene extends Phaser.Scene {
 
     // Trap textures
     const g = this.add.graphics();
+
+    // Face placeholder (smiley)
+    g.fillStyle(0xFFCC00, 1);
+    g.fillCircle(20, 20, 20);
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(12, 15, 3); // left eye
+    g.fillCircle(28, 15, 3); // right eye
+    g.lineStyle(2, 0x000000);
+    g.beginPath();
+    g.arc(20, 25, 10, 0, Math.PI, false); // smile
+    g.strokePath();
+    g.generateTexture('face_placeholder', 40, 40);
+    g.clear();
+
     // Banana
     g.fillStyle(0xFFFF00, 1);
     g.fillEllipse(15, 10, 15, 5);
@@ -101,6 +115,14 @@ export default class FightScene extends Phaser.Scene {
     this.timerText = this.add.text(400, 90, '', { fontSize: '24px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
 
     this.setupSocketListeners();
+    
+    if (this.registry.get('isTraining')) {
+       // Fake phase change for training
+       setTimeout(() => {
+           this.phase = 'phase1';
+           this.phaseText.setText('PHASE 1: CHƠI DƠ\nGiấu Đồ & Đặt Bẫy!');
+       }, 1000);
+    }
     
     // Matter Collision Event
     this.matter.world.on('collisionstart', (event: any) => {
