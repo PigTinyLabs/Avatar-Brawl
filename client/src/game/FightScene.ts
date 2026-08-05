@@ -121,7 +121,7 @@ export default class FightScene extends Phaser.Scene {
 
   createRagdoll(x: number, y: number, faceKey: string, playerId: string) {
     const group = this.matter.world.nextGroup(true);
-    const isMe = playerId === this.myId;
+    const isMe = String(playerId) === String(this.myId);
     const prefix = isMe ? 'my' : 'opp';
 
     const torso = this.matter.add.rectangle(x, y, 30, 50, { 
@@ -185,8 +185,10 @@ export default class FightScene extends Phaser.Scene {
            // Simple sync for torso, other parts will naturally drag along, but for strict visual we sync all
            // To keep it simple, we just sync torso and head
            this.matter.body.setPosition(this.opponentPlayer.head, { x: data.parts.head.x, y: data.parts.head.y });
-           this.opponentHead.setPosition(data.parts.head.x, data.parts.head.y);
-           this.opponentHead.setRotation(data.parts.head.angle);
+           if (this.opponentHead) {
+               this.opponentHead.setPosition(data.parts.head.x, data.parts.head.y);
+               this.opponentHead.setRotation(data.parts.head.angle);
+           }
        }
     });
 
@@ -209,10 +211,10 @@ export default class FightScene extends Phaser.Scene {
     });
 
     this.socket.on('player_burned', (playerId: string) => {
-       if (playerId === this.myId) {
+       if (playerId === this.myId && this.myHead) {
            this.isBurned = true;
            this.myHead.setTint(0x333333); // Black burned face
-       } else {
+       } else if (this.opponentHead) {
            this.opponentHead.setTint(0x333333);
        }
     });
@@ -255,7 +257,7 @@ export default class FightScene extends Phaser.Scene {
   }
 
   update(time: number, _delta: number) {
-    if (!this.myPlayer) return;
+    if (!this.myPlayer || !this.myHead || !this.opponentHead) return;
 
     this.myHead.setPosition(this.myPlayer.head.position.x, this.myPlayer.head.position.y);
     this.myHead.setRotation(this.myPlayer.head.angle);
