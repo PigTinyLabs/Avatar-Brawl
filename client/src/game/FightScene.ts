@@ -158,11 +158,13 @@ export default class FightScene extends Phaser.Scene {
             L: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L),
             U: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U)
         };
-        
-        // Always show mobile controls on mobile devices
-        if (!this.sys.game.device.os.desktop) {
-           this.createMobileControls();
-        }
+    } else {
+        this.keys = { W: {}, A: {}, S: {}, D: {}, J: {}, K: {}, L: {}, U: {} };
+    }
+    
+    // Always show mobile controls on mobile devices
+    if (!this.sys.game.device.os.desktop) {
+       this.createMobileControls();
     }
 
     this.myHpText = this.add.text(20, 20, `You (HP: ${myData.hp})`, { fontSize: '24px', color: '#00F0FF' });
@@ -320,7 +322,7 @@ export default class FightScene extends Phaser.Scene {
   }
 
   update(time: number) {
-    if (!this.myPlayer || !this.keys) return;
+    if (!this.myPlayer) return;
 
     this.updateHeadsAndShields();
     this.drawStickman(this.myStickman, this.myPlayer, this.myState, this.myActiveSkill, 0x00F0FF, time);
@@ -381,12 +383,12 @@ export default class FightScene extends Phaser.Scene {
     if (!artSkills) return;
     
     // Check Inputs & Combo Buffer
-    const sJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.S) || this.mobileJustPressed.S;
-    const aJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.A) || this.mobileJustPressed.A;
-    const dJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.D) || this.mobileJustPressed.D;
-    const jJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.J) || this.mobileJustPressed.J;
-    const kJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.K) || this.mobileJustPressed.K;
-    const lJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.L) || this.mobileJustPressed.L;
+    const sJustPressed = (this.keys.S.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.S as any) : false) || this.mobileJustPressed.S;
+    const aJustPressed = (this.keys.A.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.A as any) : false) || this.mobileJustPressed.A;
+    const dJustPressed = (this.keys.D.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.D as any) : false) || this.mobileJustPressed.D;
+    const jJustPressed = (this.keys.J.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.J as any) : false) || this.mobileJustPressed.J;
+    const kJustPressed = (this.keys.K.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.K as any) : false) || this.mobileJustPressed.K;
+    const lJustPressed = (this.keys.L.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.L as any) : false) || this.mobileJustPressed.L;
 
     if (sJustPressed) this.pushInput('S');
     if (aJustPressed) this.pushInput('A');

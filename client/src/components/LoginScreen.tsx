@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { auth } from '../firebase'
 import { 
   signInAnonymously, 
@@ -6,13 +6,22 @@ import {
   signInWithEmailAndPassword 
 } from 'firebase/auth'
 import { LOGO_BASE64 } from '../logoBase64'
-import { LogIn, UserPlus, Ghost } from 'lucide-react'
+import { LogIn, UserPlus, Ghost, Download, X } from 'lucide-react'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showInstallGuide, setShowInstallGuide] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
 
   const handleGuestLogin = async () => {
     setIsLoading(true);
@@ -90,9 +99,47 @@ export default function LoginScreen() {
 
       <div style={{ textAlign: 'center', margin: '1.5rem 0', color: 'var(--text-muted)' }}>OR</div>
 
-      <button onClick={handleGuestLogin} className="btn btn-secondary" style={{ width: '100%' }} disabled={isLoading}>
+      <button onClick={handleGuestLogin} className="btn btn-secondary" style={{ width: '100%', marginBottom: '1rem' }} disabled={isLoading}>
         <Ghost size={18} /> Play as Guest
       </button>
+
+      <button 
+        onClick={() => {
+          if (deferredPrompt) {
+             deferredPrompt.prompt();
+             deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
+          } else {
+             setShowInstallGuide(true);
+          }
+        }} 
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+      >
+        <Download size={18} /> Install App (iOS / Android)
+      </button>
+
+      {showInstallGuide && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div className="glass-panel" style={{ position: 'relative', maxWidth: '400px', width: '100%' }}>
+             <button onClick={() => setShowInstallGuide(false)} style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+               <X size={24} />
+             </button>
+             <h3 style={{ marginTop: 0, color: '#00F0FF' }}>How to Install App</h3>
+             <div style={{ textAlign: 'left', lineHeight: '1.6' }}>
+               <p><strong>iOS (Safari):</strong></p>
+               <ol style={{ paddingLeft: '20px' }}>
+                 <li>Tap the <strong>Share</strong> button at the bottom of the screen.</li>
+                 <li>Scroll down and tap <strong>"Add to Home Screen"</strong>.</li>
+               </ol>
+               <p><strong>Android (Chrome):</strong></p>
+               <ol style={{ paddingLeft: '20px' }}>
+                 <li>Tap the <strong>Menu (3 dots)</strong> at the top right.</li>
+                 <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
+               </ol>
+             </div>
+             <button onClick={() => setShowInstallGuide(false)} className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Got it!</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
