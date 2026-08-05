@@ -70,7 +70,7 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
         },
         scale: {
           mode: Phaser.Scale.FIT,
-          autoCenter: Phaser.Scale.NO_CENTER,
+          autoCenter: Phaser.Scale.CENTER_BOTH,
           parent: gameRef.current!,
           width: 800,
           height: 600,
@@ -157,84 +157,84 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
     onGameOver();
   }
 
+
   return (
-    <div 
+    <div
       onContextMenu={(e) => e.preventDefault()}
-      style={{ 
-        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', 
-        display: 'flex', flexDirection: 'column', backgroundColor: '#1a1a2e', zIndex: 50,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
+      style={{
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh',
+        backgroundColor: '#1a1a2e', zIndex: 50,
+        userSelect: 'none', WebkitUserSelect: 'none',
         // @ts-ignore
         WebkitTouchCallout: 'none',
       }}
     >
-      {/* Game Canvas Area - takes all space above controls */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}></div>
-          {roomData.isTraining && (
-             <button 
-               onClick={handleLeave} 
-               className="btn" 
-               style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, padding: '8px 15px', fontSize: '14px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', gap: '5px' }}
-             >
-                <LogOut size={16} /> Quit
-             </button>
-          )}
-      </div>
+      {/* Game canvas: full screen, Phaser FIT+CENTER_BOTH handles scaling */}
+      <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Mobile Controls Strip - fixed height below canvas */}
-      {isMobile ? (
-        <div style={{ height: '150px', position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px' }}>
-          {/* D-PAD Left */}
-          <div style={{ position: 'relative', width: '160px', height: '140px' }}>
-             <MobileBtn k="W" x={55} y={0} />
-             <MobileBtn k="A" x={0} y={50} />
-             <MobileBtn k="S" x={55} y={100} />
-             <MobileBtn k="D" x={110} y={50} />
+      {/* Quit button (always visible top-right) */}
+      {!roomData.isTraining && (
+        <button onClick={handleLeave} className="btn"
+          style={{ position: 'absolute', top: 12, right: 12, zIndex: 10,
+            padding: '8px 14px', fontSize: '13px', background: 'rgba(0,0,0,0.6)',
+            color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
+            display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <LogOut size={15} /> Quit
+        </button>
+      )}
+      {roomData.isTraining && (
+        <button onClick={handleLeave} className="btn"
+          style={{ position: 'absolute', top: 12, right: 12, zIndex: 10,
+            padding: '8px 14px', fontSize: '13px', background: 'rgba(0,0,0,0.6)',
+            color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
+            display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <LogOut size={15} /> Quit
+        </button>
+      )}
+
+      {/* Mobile controls: overlaid at bottom corners */}
+      {isMobile && (
+        <>
+          {/* D-Pad bottom-left */}
+          <div style={{ position: 'absolute', bottom: 20, left: 16, width: 160, height: 145, zIndex: 20 }}>
+            <MobileBtn k="W" x={55} y={0} />
+            <MobileBtn k="A" x={0}  y={50} />
+            <MobileBtn k="S" x={55} y={100} />
+            <MobileBtn k="D" x={110} y={50} />
           </div>
-
-          {/* Quit button in center */}
-          {!roomData.isTraining && (
-            <button onClick={handleLeave} className="btn" style={{ padding: '8px 15px', fontSize: '13px', background: 'rgba(255,50,50,0.3)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <LogOut size={14} /> Quit
-            </button>
-          )}
-
-          {/* Action Buttons Right */}
-          <div style={{ position: 'relative', width: '220px', height: '140px' }}>
-             <MobileBtn k="U" x={80} y={0} label="🛡" />
-             <MobileBtn k="J" x={20} y={70} radius={30} />
-             <MobileBtn k="K" x={100} y={70} radius={30} />
-             <MobileBtn k="L" x={170} y={20} radius={30} />
+          {/* Action buttons bottom-right */}
+          <div style={{ position: 'absolute', bottom: 20, right: 16, width: 220, height: 145, zIndex: 20 }}>
+            <MobileBtn k="U" x={85}  y={0}  label="🛡" radius={25} />
+            <MobileBtn k="J" x={15}  y={75} radius={32} />
+            <MobileBtn k="K" x={100} y={75} radius={32} />
+            <MobileBtn k="L" x={170} y={18} radius={28} />
           </div>
-        </div>
-      ) : (
-        <div style={{ textAlign: 'center', padding: '8px', color: 'var(--text-muted)', fontSize: '14px', flexShrink: 0 }}>
-          W A S D to move &nbsp;|&nbsp; J: Attack &nbsp;|&nbsp; K: Special &nbsp;|&nbsp; U: Block
-          {!roomData.isTraining && <button onClick={handleLeave} className="btn" style={{ marginLeft: '20px', padding: '4px 12px', fontSize: '13px', color: '#ff5555' }}><LogOut size={14} /> Quit</button>}
+        </>
+      )}
+
+      {/* Desktop hint bar */}
+      {!isMobile && (
+        <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0, textAlign: 'center',
+          color: 'rgba(255,255,255,0.35)', fontSize: '12px', zIndex: 10, pointerEvents: 'none' }}>
+          W A S D · J Attack · K Special · L Skill · U Block
         </div>
       )}
 
+      {/* Game Over overlay */}
       {gameOverState && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.8)', display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', zIndex: 100
         }}>
-          <h1 style={{ fontSize: '4rem', color: gameOverState.isWin ? '#00FF00' : '#FF3366', textShadow: '0 0 20px rgba(255,255,255,0.5)', marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: '4rem', color: gameOverState.isWin ? '#00FF00' : '#FF3366',
+            textShadow: '0 0 20px rgba(255,255,255,0.5)', marginBottom: '2rem' }}>
             {gameOverState.isWin ? 'YOU WIN!' : 'YOU LOSE!'}
           </h1>
-          
           <div style={{ display: 'flex', gap: '20px' }}>
-            <button className="btn btn-primary" onClick={handleRematch}>
-              <RefreshCw size={20} /> Rematch
-            </button>
-            <button className="btn" style={{ border: '1px solid #fff' }} onClick={handleLeave}>
-              <LogOut size={20} /> Leave
-            </button>
+            <button className="btn btn-primary" onClick={handleRematch}><RefreshCw size={20} /> Rematch</button>
+            <button className="btn" style={{ border: '1px solid #fff' }} onClick={handleLeave}><LogOut size={20} /> Leave</button>
           </div>
-          
           {rematchStatus && <p style={{ marginTop: '1rem', color: 'var(--secondary)' }}>{rematchStatus}</p>}
         </div>
       )}
