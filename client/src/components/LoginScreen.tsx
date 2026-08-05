@@ -5,6 +5,7 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword 
 } from 'firebase/auth'
+import { LOGO_BASE64 } from '../logoBase64'
 import { LogIn, UserPlus, Ghost } from 'lucide-react'
 
 export default function LoginScreen() {
@@ -52,7 +53,7 @@ export default function LoginScreen() {
   return (
     <div className="glass-panel" style={{ width: '400px', maxWidth: '90vw' }}>
       <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-         <img src="/logo.png" alt="Avatar Brawl Logo" style={{ width: '200px', maxWidth: '100%', borderRadius: '15px', boxShadow: '0 0 20px rgba(0,255,255,0.3)' }} />
+         <img src={LOGO_BASE64} alt="Avatar Brawl Logo" style={{ width: '200px', maxWidth: '100%', borderRadius: '15px', boxShadow: '0 0 20px rgba(0,255,255,0.3)' }} />
       </div>
       
       {error && (
