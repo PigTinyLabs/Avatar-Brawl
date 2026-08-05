@@ -104,13 +104,28 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
       return;
     }
 
-    // Fetch initial room state
+    // Fetch initial room state - wait until BOTH players are present
     const roomRef = ref(database, `rooms/${roomData.roomId}`);
-    get(roomRef).then((snap) => {
-      if (snap.exists()) {
-        initGame(snap.val());
-      }
-    });
+    let attempts = 0;
+    const maxAttempts = 20; // 10 seconds max
+
+    const waitForBothPlayers = () => {
+      get(roomRef).then((snap) => {
+        if (snap.exists()) {
+          const data = snap.val();
+          const playerIds = Object.keys(data.players || {});
+          if (playerIds.length >= 2) {
+            // Both players present — start game
+            initGame(data);
+          } else if (attempts < maxAttempts) {
+            // Still waiting for opponent to join
+            attempts++;
+            setTimeout(waitForBothPlayers, 500);
+          }
+        }
+      });
+    };
+    waitForBothPlayers();
 
     return () => {
       gameInstance.current?.destroy(true)
