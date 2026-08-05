@@ -70,8 +70,8 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
         },
         scale: {
           mode: Phaser.Scale.FIT,
-          autoCenter: Phaser.Scale.CENTER_BOTH,
-          parent: 'game-container',
+          autoCenter: Phaser.Scale.NO_CENTER,
+          parent: gameRef.current!,
           width: 800,
           height: 600,
         },
@@ -170,8 +170,8 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
       }}
     >
       {/* Game Canvas Area - takes all space above controls */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%' }}></div>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}></div>
           {roomData.isTraining && (
              <button 
                onClick={handleLeave} 
