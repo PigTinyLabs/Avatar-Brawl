@@ -21,6 +21,12 @@ function App() {
   const [roomData, setRoomData] = useState<any>(null)
 
   useEffect(() => {
+    if (!auth) {
+        // Fallback local user if firebase is missing
+        setUser({ uid: 'local_user_' + Date.now(), isAnonymous: true } as any);
+        setIsAuthChecking(false);
+        return;
+    }
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u)
       setIsAuthChecking(false)
@@ -67,8 +73,12 @@ function App() {
     setRoomData(null)
   }
   
-  const handleLogout = () => {
-    signOut(auth);
+  const handleSignOut = () => {
+    if (auth) {
+        signOut(auth);
+    } else {
+        setUser(null);
+    }
   }
 
   if (isAuthChecking) {
@@ -105,7 +115,7 @@ function App() {
           <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem' }} onClick={() => setGameState('history')}>
             <History size={16} /> History
           </button>
-          <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: '#ff5555' }} onClick={handleLogout}>
+          <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: '#ff5555' }} onClick={handleSignOut}>
             <LogOut size={16} /> Logout
           </button>
         </div>

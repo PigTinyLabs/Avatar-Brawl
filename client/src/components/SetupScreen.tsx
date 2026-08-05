@@ -29,12 +29,23 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
 
   useEffect(() => {
     const loadProfile = async () => {
-      const profileRef = ref(database, `users/${userId}/profile`);
-      const snap = await get(profileRef);
-      if (snap.exists()) {
-        const data = snap.val();
-        if (data.faceImage) setImage(data.faceImage);
-        if (data.martialArt) setMartialArt(data.martialArt);
+      if (userId) {
+        if (database) {
+            const profileRef = ref(database, `users/${userId}/profile`);
+            const snap = await get(profileRef);
+            if (snap.exists()) {
+              const data = snap.val();
+              if (data.faceImage) setImage(data.faceImage);
+              if (data.martialArt) setMartialArt(data.martialArt);
+            }
+        } else {
+            const localData = localStorage.getItem(`profile_${userId}`);
+            if (localData) {
+                const data = JSON.parse(localData);
+                if (data.faceImage) setImage(data.faceImage);
+                if (data.martialArt) setMartialArt(data.martialArt);
+            }
+        }
       }
       setIsLoading(false);
     }
@@ -103,8 +114,11 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
       martialArt
     };
 
-    // Save to user profile so they don't have to upload next time
-    await set(ref(database, `users/${userId}/profile`), payload);
+    if (database) {
+        await set(ref(database, `users/${userId}/profile`), payload);
+    } else {
+        localStorage.setItem(`profile_${userId}`, JSON.stringify(payload));
+    }
 
     onComplete(payload, isTraining)
   }

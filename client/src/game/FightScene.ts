@@ -97,6 +97,10 @@ export default class FightScene extends Phaser.Scene {
 
     this.myPlayer = this.createRagdoll(p1Data.x, 300, `face_${p1Data.id}`, p1Data.id);
     this.opponentPlayer = this.createRagdoll(p2Data.x, 300, `face_${p2Data.id}`, p2Data.id);
+    
+    // Expose for E2E testing
+    (window as any).fightScene = this;
+
 
     this.cameras.main.setBounds(0, -1000, 1600, 1600);
     this.cameras.main.startFollow(this.myHead);
@@ -133,19 +137,32 @@ export default class FightScene extends Phaser.Scene {
     
     // Matter Collision Event
     this.matter.world.on('collisionstart', (event: any) => {
-       event.pairs.forEach((pair: any) => {
-           const bodyA = pair.bodyA;
-           const bodyB = pair.bodyB;
-           
-           if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
-               this.checkTrapCollision(bodyB);
-               this.checkAttackCollision(bodyB);
-           } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
-               this.checkTrapCollision(bodyA);
-               this.checkAttackCollision(bodyA);
-           }
-       });
-    });
+        event.pairs.forEach((pair: any) => {
+            const bodyA = pair.bodyA;
+            const bodyB = pair.bodyB;
+            
+            if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
+                this.checkTrapCollision(bodyB);
+                this.checkAttackCollision(bodyB);
+            } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
+                this.checkTrapCollision(bodyA);
+                this.checkAttackCollision(bodyA);
+            }
+        });
+     });
+
+     this.matter.world.on('collisionactive', (event: any) => {
+        event.pairs.forEach((pair: any) => {
+            const bodyA = pair.bodyA;
+            const bodyB = pair.bodyB;
+            
+            if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
+                this.checkTrapCollision(bodyB);
+            } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
+                this.checkTrapCollision(bodyA);
+            }
+        });
+     });
   }
 
   createRagdoll(x: number, y: number, faceKey: string, playerId: string) {
@@ -223,7 +240,7 @@ export default class FightScene extends Phaser.Scene {
     });
 
     this.socket.on('trap_placed', (trap: any) => {
-       const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: `trap_${trap.id}` });
+       const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: trap.id });
        sprite.setData('trapData', trap);
        this.traps.push(sprite);
     });
@@ -259,18 +276,22 @@ export default class FightScene extends Phaser.Scene {
   placeTrapLocal(type: string, x: number, y: number) {
       const trapId = `trap_${Date.now()}`;
       const trap = { id: trapId, ownerId: this.myId, type, x, y };
-      const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: `trap_${trap.id}` });
+      const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: trap.id });
       sprite.setData('trapData', trap);
       this.traps.push(sprite);
   }
 
   checkTrapCollision(body: any) {
       if (body.label.startsWith('trap_')) {
-          const trapId = body.label.split('_')[1];
+          const trapId = body.label;
           const sprite = this.traps.find(t => t.getData('trapData').id === trapId);
           if (sprite) {
               const trapData = sprite.getData('trapData');
-              if (trapData.ownerId !== this.myId || this.phase === 'phase2' || this.isTraining) { // Can trigger own traps in phase 2!
+              
+              // Only allow triggering own traps in phase 2, or in training if we are at step 5
+              const canTrigger = trapData.ownerId !== this.myId || this.phase === 'phase2' || (this.isTraining && this.tutorialStep >= 5);
+              
+              if (canTrigger) {
                  if (!this.isTraining) {
                      this.socket.emit('trigger_trap', trapId);
                  } else {

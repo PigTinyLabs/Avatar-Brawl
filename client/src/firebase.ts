@@ -13,6 +13,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const database = getDatabase(app);
-export const auth = getAuth(app);
+let app, database: any, auth: any;
+try {
+  app = initializeApp(firebaseConfig);
+  database = getDatabase(app);
+  auth = getAuth(app);
+} catch (e) {
+  console.warn("Firebase failed to init, likely missing env config. Running in local-only mode.");
+  database = null;
+  auth = null;
+}
+
+export { database, auth };

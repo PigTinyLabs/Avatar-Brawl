@@ -25,11 +25,15 @@ export default function LoginScreen() {
 
   const handleGuestLogin = async () => {
     setIsLoading(true);
-    setError('');
     try {
-      await signInAnonymously(auth);
+      if (auth) {
+        await signInAnonymously(auth);
+      } else {
+        // App.tsx handles fallback user creation on mount
+      }
     } catch (err: any) {
       setError(err.message);
+    } finally {
       setIsLoading(false);
     }
   }

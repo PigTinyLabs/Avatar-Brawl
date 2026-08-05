@@ -14,13 +14,19 @@ export default function HistoryScreen({ userId, onBack }: HistoryScreenProps) {
 
   useEffect(() => {
     const fetchHistory = async () => {
-      const historyRef = ref(database, `users/${userId}/history`);
-      const snap = await get(historyRef);
-      if (snap.exists()) {
-        const data = snap.val();
-        // Convert to array and sort by time descending
-        const arr = Object.values(data).sort((a: any, b: any) => b.ts - a.ts);
-        setHistory(arr);
+      if (userId && database) {
+        try {
+          const historyRef = ref(database, `users/${userId}/history`);
+          const snap = await get(historyRef);
+          if (snap.exists()) {
+            const data = snap.val();
+            // Convert to array and sort by time descending
+            const arr = Object.values(data).sort((a: any, b: any) => b.ts - a.ts);
+            setHistory(arr);
+          }
+        } catch (e) {
+          console.error("Failed to load history", e);
+        }
       }
       setLoading(false);
     }
