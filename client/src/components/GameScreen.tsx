@@ -70,7 +70,10 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
         },
         scale: {
           mode: Phaser.Scale.FIT,
-          autoCenter: Phaser.Scale.CENTER_BOTH
+          autoCenter: Phaser.Scale.CENTER_BOTH,
+          parent: gameRef.current!,
+          width: 800,
+          height: 600,
         },
         scene: [FightScene],
         backgroundColor: '#1a1a2e',
@@ -155,10 +158,20 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#1a1a2e', zIndex: 50 }}>
+    <div 
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ 
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', 
+        display: 'flex', flexDirection: 'column', backgroundColor: '#1a1a2e', zIndex: 50,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        // @ts-ignore
+        WebkitTouchCallout: 'none',
+      }}
+    >
       {/* Game Canvas Area - takes all space above controls */}
-      <div style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 0 }}>
-          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', maxWidth: 800, maxHeight: 600 }}></div>
+      <div style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 0, overflow: 'hidden' }}>
+          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', maxWidth: 800, maxHeight: 600, display: 'flex', justifyContent: 'center', alignItems: 'center' }}></div>
           {roomData.isTraining && (
              <button 
                onClick={handleLeave} 

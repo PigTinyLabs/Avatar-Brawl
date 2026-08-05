@@ -167,12 +167,12 @@ export default class FightScene extends Phaser.Scene {
        this.createMobileControls();
     }
 
-    this.myHpText = this.add.text(20, 20, `You (HP: ${myData.hp})`, { fontSize: '24px', color: '#00F0FF' });
-    this.opponentHpText = this.add.text(500, 20, `Opponent (HP: ${opponentData.hp})`, { fontSize: '24px', color: '#FF3366' });
-    this.scoreText = this.add.text(400, 30, `0 - 0`, { fontSize: '32px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5);
+    this.myHpText = this.add.text(20, 55, `You (HP: ${myData.hp})`, { fontSize: '22px', color: '#00F0FF' });
+    this.opponentHpText = this.add.text(500, 55, `Opponent (HP: ${opponentData.hp})`, { fontSize: '22px', color: '#FF3366' });
+    this.scoreText = this.add.text(400, 60, `0 - 0`, { fontSize: '28px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5);
     
-    this.add.text(20, 60, `Martial Art: ${myData.martialArt.toUpperCase()}`, { fontSize: '16px', color: '#888' });
-    this.add.text(500, 60, `Martial Art: ${opponentData.martialArt.toUpperCase()}`, { fontSize: '16px', color: '#888' });
+    this.add.text(20, 88, `Martial Art: ${myData.martialArt.toUpperCase()}`, { fontSize: '14px', color: '#888' });
+    this.add.text(500, 88, `Martial Art: ${opponentData.martialArt.toUpperCase()}`, { fontSize: '14px', color: '#888' });
 
     if (!this.isTraining) {
        this.setupFirebaseListeners();

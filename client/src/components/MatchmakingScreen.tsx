@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Search, Users, Key, ChevronLeft } from 'lucide-react'
+import { Loader2, Search, Users, Key, ChevronLeft, Copy, Check } from 'lucide-react'
 import type { PlayerData } from '../types'
 import { database } from '../firebase'
 import { ref, set, get, onValue, remove, onDisconnect, update } from 'firebase/database'
@@ -18,6 +18,15 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
   const [status, setStatus] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [myCode, setMyCode] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyCode = () => {
+    if (!myCode) return;
+    navigator.clipboard.writeText(myCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
   const [unsubscribeFunc, setUnsubscribeFunc] = useState<(() => void) | null>(null)
 
   useEffect(() => {
@@ -226,8 +235,24 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
           
           {mode === 'create_private' && (
              <div style={{ padding: '15px', background: 'rgba(0,0,0,0.5)', borderRadius: '12px', marginBottom: '2rem' }}>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '5px' }}>Room Code</p>
-                <h1 style={{ letterSpacing: '8px', color: 'var(--secondary)', margin: 0 }}>{myCode}</h1>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '8px', fontSize: '0.85rem' }}>Room Code</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                  <h1 style={{ letterSpacing: '8px', color: 'var(--secondary)', margin: 0, userSelect: 'none', WebkitUserSelect: 'none' }}>{myCode}</h1>
+                  <button
+                    onClick={handleCopyCode}
+                    title="Copy room code"
+                    style={{
+                      background: copied ? 'rgba(0, 245, 100, 0.2)' : 'rgba(255,255,255,0.1)',
+                      border: `1px solid ${copied ? '#00f564' : 'rgba(255,255,255,0.2)'}`,
+                      borderRadius: '8px', padding: '8px 12px', cursor: 'pointer',
+                      color: copied ? '#00f564' : '#fff', display: 'flex', alignItems: 'center', gap: '5px',
+                      fontSize: '13px', transition: 'all 0.2s', flexShrink: 0
+                    }}
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
              </div>
           )}
 
