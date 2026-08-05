@@ -70,7 +70,7 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
         },
         scale: {
           mode: Phaser.Scale.FIT,
-          autoCenter: Phaser.Scale.CENTER_BOTH,
+          autoCenter: Phaser.Scale.NO_CENTER,
           parent: gameRef.current!,
           width: 800,
           height: 600,
@@ -169,8 +169,8 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
         WebkitTouchCallout: 'none',
       }}
     >
-      {/* Game canvas: full screen, Phaser FIT+CENTER_BOTH handles scaling */}
-      <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%' }} />
+      {/* Game canvas: full screen, flex centered */}
+      <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }} />
 
       {/* Quit button (always visible top-right) */}
       {!roomData.isTraining && (
