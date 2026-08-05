@@ -155,8 +155,9 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a2e', zIndex: 50 }}>
-      <div style={{ position: 'relative', width: '100%', maxWidth: '100vw', height: '100%', maxHeight: '100dvh', margin: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#1a1a2e', zIndex: 50 }}>
+      {/* Game Canvas Area - takes all space above controls */}
+      <div style={{ position: 'relative', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 0 }}>
           <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%', maxWidth: 800, maxHeight: 600 }}></div>
           {roomData.isTraining && (
              <button 
@@ -168,28 +169,38 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
              </button>
           )}
       </div>
-      <div style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>
-        Controls: W A S D to move, J to Attack
-      </div>
 
-      {isMobile && (
-        <>
-          {/* Left Controls (D-PAD) */}
-          <div style={{ position: 'absolute', bottom: '20px', left: '20px', width: '160px', height: '160px', zIndex: 100 }}>
+      {/* Mobile Controls Strip - fixed height below canvas */}
+      {isMobile ? (
+        <div style={{ height: '150px', position: 'relative', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px' }}>
+          {/* D-PAD Left */}
+          <div style={{ position: 'relative', width: '160px', height: '140px' }}>
              <MobileBtn k="W" x={55} y={0} />
-             <MobileBtn k="A" x={0} y={55} />
-             <MobileBtn k="S" x={55} y={110} />
-             <MobileBtn k="D" x={110} y={55} />
+             <MobileBtn k="A" x={0} y={50} />
+             <MobileBtn k="S" x={55} y={100} />
+             <MobileBtn k="D" x={110} y={50} />
           </div>
 
-          {/* Right Controls (Actions) */}
-          <div style={{ position: 'absolute', bottom: '20px', right: '20px', width: '220px', height: '160px', zIndex: 100 }}>
-             <MobileBtn k="U" x={0} y={0} label="Block" />
-             <MobileBtn k="J" x={20} y={90} radius={35} />
-             <MobileBtn k="K" x={110} y={90} radius={35} />
-             <MobileBtn k="L" x={150} y={10} radius={35} />
+          {/* Quit button in center */}
+          {!roomData.isTraining && (
+            <button onClick={handleLeave} className="btn" style={{ padding: '8px 15px', fontSize: '13px', background: 'rgba(255,50,50,0.3)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <LogOut size={14} /> Quit
+            </button>
+          )}
+
+          {/* Action Buttons Right */}
+          <div style={{ position: 'relative', width: '220px', height: '140px' }}>
+             <MobileBtn k="U" x={80} y={0} label="🛡" />
+             <MobileBtn k="J" x={20} y={70} radius={30} />
+             <MobileBtn k="K" x={100} y={70} radius={30} />
+             <MobileBtn k="L" x={170} y={20} radius={30} />
           </div>
-        </>
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '8px', color: 'var(--text-muted)', fontSize: '14px', flexShrink: 0 }}>
+          W A S D to move &nbsp;|&nbsp; J: Attack &nbsp;|&nbsp; K: Special &nbsp;|&nbsp; U: Block
+          {!roomData.isTraining && <button onClick={handleLeave} className="btn" style={{ marginLeft: '20px', padding: '4px 12px', fontSize: '13px', color: '#ff5555' }}><LogOut size={14} /> Quit</button>}
+        </div>
       )}
 
       {gameOverState && (

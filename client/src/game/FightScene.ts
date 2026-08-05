@@ -309,11 +309,11 @@ export default class FightScene extends Phaser.Scene {
     this.opponentMaskShape = this.make.graphics();
     this.opponentMaskShape.fillStyle(0xffffff).fillCircle(0, 0, 25);
 
-    const myFaceKey = this.textures.exists(`face_${this.myId}`) ? `face_${this.myId}` : 'default_face';
+    const myFaceKey = this.textures.exists(`face_${this.myId}`) ? `face_${this.myId}` : 'face_placeholder';
     this.myHead = this.add.image(this.myPlayer.x, this.myPlayer.y - 45, myFaceKey);
     this.myHead.setDisplaySize(50, 50).setMask(this.myMaskShape.createGeometryMask());
 
-    const opponentFaceKey = this.textures.exists(`face_${this.opponentId}`) ? `face_${this.opponentId}` : 'default_face';
+    const opponentFaceKey = this.textures.exists(`face_${this.opponentId}`) ? `face_${this.opponentId}` : 'face_placeholder';
     this.opponentHead = this.add.image(this.opponentPlayer.x, this.opponentPlayer.y - 45, opponentFaceKey);
     this.opponentHead.setDisplaySize(50, 50).setMask(this.opponentMaskShape.createGeometryMask());
     
