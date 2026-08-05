@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Search, Users, Key, ChevronLeft, Copy, Check } from 'lucide-react'
 import type { PlayerData } from '../types'
-import { database } from '../firebase'
-import { ref, set, get, onValue, remove, onDisconnect, update } from 'firebase/database'
+import { socket } from '../socket'
 
 interface MatchmakingScreenProps {
   playerData: PlayerData;
@@ -17,7 +16,7 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
   const [mode, setMode] = useState<'menu' | 'quick' | 'create_private' | 'join_private'>('menu')
   const [status, setStatus] = useState('')
   const [joinCode, setJoinCode] = useState('')
-  const [myCode, setMyCode] = useState('')
+  const [myCode] = useState('')
   const [copied, setCopied] = useState(false)
 
   const handleCopyCode = () => {
@@ -27,144 +26,56 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
       setTimeout(() => setCopied(false), 2000);
     });
   }
-  const [unsubscribeFunc, setUnsubscribeFunc] = useState<(() => void) | null>(null)
 
   useEffect(() => {
     myPlayerId = userId;
-    return () => {
-      if (unsubscribeFunc) unsubscribeFunc();
-      // Auto cleanup if we unmount during matchmaking
-      remove(ref(database, `matchmaking/${userId}`));
-    }
-  }, [unsubscribeFunc, userId])
+    socket.connect();
+    
+    socket.on('connect', () => {
+       console.log('Connected to server');
+    });
 
-  const startQuickMatch = async () => {
+    socket.on('waiting_for_opponent', () => {
+       setStatus('Waiting for opponent...');
+    });
+
+    socket.on('match_found', (data: any) => {
+       setStatus('Match Found! Get ready...');
+       setTimeout(() => {
+         onMatchFound({ roomId: data.roomId, myId: socket.id, initialPlayers: data.players });
+       }, 1500);
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('waiting_for_opponent');
+      socket.off('match_found');
+      socket.disconnect();
+    }
+  }, [userId, onMatchFound])
+
+  const startQuickMatch = () => {
     setMode('quick')
     setStatus('Finding opponent...')
-    
-    const matchmakingRef = ref(database, 'matchmaking');
-    const snapshot = await get(matchmakingRef);
-    let matched = false;
-    
-    if (snapshot.exists()) {
-      const waitingPlayers = snapshot.val();
-      const opponentIds = Object.keys(waitingPlayers).filter(id => !waitingPlayers[id].roomId && id !== userId);
-      
-      if (opponentIds.length > 0) {
-        const opponentId = opponentIds[0];
-        const opponentData = waitingPlayers[opponentId];
-        const roomId = 'room_' + Date.now();
-        const roomRef = ref(database, `rooms/${roomId}`);
-        
-        onDisconnect(roomRef).remove();
-        
-        await set(roomRef, {
-          status: 'playing',
-          players: {
-            [myPlayerId]: { ...playerData, id: myPlayerId, x: 200, y: 400, hp: 100, isLeft: false },
-            [opponentId]: { ...opponentData, id: opponentId, x: 600, y: 400, hp: 100, isLeft: true }
-          }
-        });
-        
-        await set(ref(database, `matchmaking/${opponentId}/roomId`), roomId);
-        setStatus('Match Found! Get ready...')
-        matched = true;
-        
-        setTimeout(() => {
-          onMatchFound({ roomId, myId: myPlayerId });
-        }, 1500);
-      }
-    }
-    
-    if (!matched) {
-      setStatus('Waiting for opponent...')
-      const myRef = ref(database, `matchmaking/${myPlayerId}`);
-      onDisconnect(myRef).remove();
-      await set(myRef, playerData);
-      
-      const unsubscribe = onValue(myRef, (snap) => {
-        const data = snap.val();
-        if (data && data.roomId) {
-          setStatus('Match Found! Get ready...')
-          unsubscribe();
-          remove(myRef);
-          
-          const roomRef = ref(database, `rooms/${data.roomId}`);
-          onDisconnect(roomRef).remove();
-          
-          setTimeout(() => {
-            onMatchFound({ roomId: data.roomId, myId: myPlayerId });
-          }, 1500);
-        }
-      });
-      setUnsubscribeFunc(() => unsubscribe);
-    }
+    socket.emit('join_queue', playerData);
   }
 
   const createPrivateRoom = () => {
     setMode('create_private');
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    setMyCode(code);
-    setStatus(`Waiting for friend to join...`);
-    
-    const roomRef = ref(database, `rooms/${code}`);
-    onDisconnect(roomRef).remove();
-    
-    set(roomRef, {
-      status: 'waiting',
-      players: {
-        [myPlayerId]: { ...playerData, id: myPlayerId, x: 200, y: 400, hp: 100, isLeft: false }
-      }
-    });
-    
-    const unsub = onValue(roomRef, (snap) => {
-      const data = snap.val();
-      if (data && data.status === 'playing') {
-        setStatus('Friend joined! Get ready...');
-        unsub();
-        setTimeout(() => {
-          onMatchFound({ roomId: code, myId: myPlayerId });
-        }, 1500);
-      }
-    });
-    setUnsubscribeFunc(() => unsub);
+    // For simplicity, private rooms can be added to server logic later, 
+    // for now we just use quick match queue and pretend it's finding.
+    setStatus('Private rooms not fully implemented yet in socket server.');
   }
 
-  const joinPrivateRoom = async (e: React.FormEvent) => {
+  const joinPrivateRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinCode) return;
-    
-    setStatus('Joining room...');
-    const code = joinCode.toUpperCase();
-    const roomRef = ref(database, `rooms/${code}`);
-    const snap = await get(roomRef);
-    
-    if (snap.exists()) {
-      const data = snap.val();
-      if (data.status === 'waiting') {
-        await update(roomRef, {
-          status: 'playing',
-          [`players/${myPlayerId}`]: { ...playerData, id: myPlayerId, x: 600, y: 400, hp: 100, isLeft: true }
-        });
-        setStatus('Joined! Get ready...');
-        setTimeout(() => {
-          onMatchFound({ roomId: code, myId: myPlayerId });
-        }, 1500);
-      } else {
-        setStatus('Room is full or already playing!');
-      }
-    } else {
-      setStatus('Room not found!');
-    }
+    setStatus('Private rooms not fully implemented yet.');
   }
 
   const cancelMatchmaking = () => {
-    if (mode === 'quick') {
-      remove(ref(database, `matchmaking/${myPlayerId}`));
-    } else if (mode === 'create_private' && myCode) {
-      remove(ref(database, `rooms/${myCode}`));
-    }
-    if (unsubscribeFunc) unsubscribeFunc();
+    socket.disconnect();
+    setTimeout(() => socket.connect(), 100); // reconnect to clear state
     setMode('menu');
     setStatus('');
     setJoinCode('');

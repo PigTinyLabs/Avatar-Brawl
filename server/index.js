@@ -10,7 +10,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // allow all for dev
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
@@ -19,120 +19,168 @@ let waitingPlayers = [];
 let rooms = {};
 let roomCounter = 0;
 
+const PHASE1_DURATION = 45000;
+const PHASE3_DURATION = 30000;
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Player joins the matchmaking queue
   socket.on('join_queue', (playerData) => {
-    console.log(`Player ${socket.id} joined queue with style ${playerData.martialArt}`);
-    
-    // Check if player is already in queue
     if (waitingPlayers.find(p => p.id === socket.id)) return;
-
-    const player = {
-      id: socket.id,
-      socket: socket,
-      data: playerData
-    };
-
+    
+    // Add faceImage handling since we need it for Phase 2 expressions
+    const player = { id: socket.id, socket: socket, data: playerData };
     waitingPlayers.push(player);
 
     if (waitingPlayers.length >= 2) {
-      // Create a match
       const p1 = waitingPlayers.shift();
       const p2 = waitingPlayers.shift();
 
       const roomId = `room_${roomCounter++}`;
       
       rooms[roomId] = {
+        id: roomId,
+        phase: 'wait', // wait, phase1, phase2, phase3, end
+        timer: null,
         players: {
-          [p1.id]: { ...p1.data, id: p1.id, x: 200, y: 400, hp: 100, isLeft: true },
-          [p2.id]: { ...p2.data, id: p2.id, x: 600, y: 400, hp: 100, isLeft: false }
-        }
+          [p1.id]: { ...p1.data, id: p1.id, x: 200, y: 400, isLeft: true, hp: 100, isBurned: false, hasTreasure: false },
+          [p2.id]: { ...p2.data, id: p2.id, x: 600, y: 400, isLeft: false, hp: 100, isBurned: false, hasTreasure: false }
+        },
+        traps: [] // { id, x, y, type, ownerId }
       };
 
       p1.socket.join(roomId);
       p2.socket.join(roomId);
-      
       p1.socket.roomId = roomId;
       p2.socket.roomId = roomId;
 
-      // Notify players
       io.to(roomId).emit('match_found', {
         roomId: roomId,
         players: rooms[roomId].players
       });
 
-      console.log(`Match created: ${p1.id} vs ${p2.id} in ${roomId}`);
+      startPhase1(roomId);
     } else {
-      // Waiting
       socket.emit('waiting_for_opponent');
     }
   });
 
-  // Game state synchronization
-  socket.on('player_move', (data) => {
+  // Client syncs their physics state
+  socket.on('sync_state', (data) => {
     const roomId = socket.roomId;
     if (roomId && rooms[roomId]) {
-      // Update local state if necessary, then broadcast
-      if (rooms[roomId].players[socket.id]) {
-         rooms[roomId].players[socket.id].x = data.x;
-         rooms[roomId].players[socket.id].y = data.y;
-         rooms[roomId].players[socket.id].animation = data.animation;
-         rooms[roomId].players[socket.id].flipX = data.flipX;
-      }
-      
-      // Broadcast to other player
-      socket.to(roomId).emit('opponent_move', data);
+      // data: { x, y, parts: [...], flipX, animation }
+      socket.to(roomId).emit('opponent_sync', { id: socket.id, ...data });
     }
   });
 
-  socket.on('player_attack', (data) => {
+  // Client places a trap
+  socket.on('place_trap', (trapData) => {
     const roomId = socket.roomId;
-    if (roomId && rooms[roomId]) {
-      socket.to(roomId).emit('opponent_attack', data);
+    if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase1') {
+      const trap = { ...trapData, ownerId: socket.id, id: Math.random().toString(36).substr(2, 9) };
+      rooms[roomId].traps.push(trap);
+      io.to(roomId).emit('trap_placed', trap);
     }
   });
 
-  socket.on('player_hit', (data) => {
+  // Client triggers a trap
+  socket.on('trigger_trap', (trapId) => {
     const roomId = socket.roomId;
     if (roomId && rooms[roomId]) {
-      const targetId = data.targetId;
-      const damage = data.damage || 10;
-      
-      if (rooms[roomId].players[targetId]) {
-        rooms[roomId].players[targetId].hp -= damage;
+      const trapIndex = rooms[roomId].traps.findIndex(t => t.id === trapId);
+      if (trapIndex !== -1) {
+        const trap = rooms[roomId].traps[trapIndex];
+        rooms[roomId].traps.splice(trapIndex, 1);
+        io.to(roomId).emit('trap_triggered', { trapId, victimId: socket.id, trapType: trap.type });
         
-        io.to(roomId).emit('update_hp', {
-          id: targetId,
-          hp: rooms[roomId].players[targetId].hp
-        });
-
-        if (rooms[roomId].players[targetId].hp <= 0) {
-          io.to(roomId).emit('game_over', {
-            winner: socket.id
-          });
+        if (trap.type === 'fake_treasure') {
+           rooms[roomId].players[socket.id].isBurned = true;
+           io.to(roomId).emit('player_burned', socket.id);
+        } else if (trap.type === 'real_treasure' && rooms[roomId].phase === 'phase2') {
+           startPhase3(roomId, socket.id);
         }
       }
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    
-    // Remove from queue
-    waitingPlayers = waitingPlayers.filter(p => p.id !== socket.id);
+  // Attack logic (Phase 3)
+  socket.on('attack_hit', (data) => {
+     const roomId = socket.roomId;
+     if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase3') {
+        const victimId = data.targetId;
+        if (rooms[roomId].players[victimId].hasTreasure) {
+           // Drop treasure!
+           rooms[roomId].players[victimId].hasTreasure = false;
+           // Give to attacker for simplicity, or drop it on ground. Let's give it to attacker.
+           rooms[roomId].players[socket.id].hasTreasure = true;
+           
+           io.to(roomId).emit('treasure_stolen', { newOwnerId: socket.id, victimId });
+        }
+     }
+  });
 
-    // Handle leaving room
+  socket.on('disconnect', () => {
+    waitingPlayers = waitingPlayers.filter(p => p.id !== socket.id);
     const roomId = socket.roomId;
     if (roomId && rooms[roomId]) {
+      if (rooms[roomId].timer) clearTimeout(rooms[roomId].timer);
       socket.to(roomId).emit('opponent_disconnected');
       delete rooms[roomId];
     }
   });
 });
 
-const PORT = process.env.PORT || 3001;
+function startPhase1(roomId) {
+  const room = rooms[roomId];
+  if(!room) return;
+  room.phase = 'phase1';
+  io.to(roomId).emit('phase_changed', { phase: 'phase1', timeLimit: PHASE1_DURATION });
+  
+  room.timer = setTimeout(() => {
+    startPhase2(roomId);
+  }, PHASE1_DURATION);
+}
+
+function startPhase2(roomId) {
+  const room = rooms[roomId];
+  if(!room) return;
+  room.phase = 'phase2';
+  io.to(roomId).emit('phase_changed', { phase: 'phase2' });
+  // No timer, waits until real treasure is found
+}
+
+function startPhase3(roomId, finderId) {
+  const room = rooms[roomId];
+  if(!room) return;
+  
+  if (room.timer) clearTimeout(room.timer);
+  room.phase = 'phase3';
+  room.players[finderId].hasTreasure = true;
+  
+  io.to(roomId).emit('phase_changed', { phase: 'phase3', timeLimit: PHASE3_DURATION, finderId });
+  
+  room.timer = setTimeout(() => {
+    endGame(roomId);
+  }, PHASE3_DURATION);
+}
+
+function endGame(roomId) {
+  const room = rooms[roomId];
+  if(!room) return;
+  
+  let winner = null;
+  Object.values(room.players).forEach(p => {
+     if (p.hasTreasure) winner = p.id;
+  });
+  
+  // If no one has it somehow, it's a draw, but someone should have it.
+  io.to(roomId).emit('game_over', { winner });
+  if (room.timer) clearTimeout(room.timer);
+  delete rooms[roomId];
+}
+
+const PORT = process.env.PORT || 3002;
 server.listen(PORT, () => {
   console.log(`Game Server running on port ${PORT}`);
 });

@@ -1,155 +1,86 @@
 import Phaser from 'phaser';
-import { database } from '../firebase';
-import { ref, onValue, set, update, get, off } from 'firebase/database';
-
-const SKILLS: Record<string, any> = {
-  boxing: {
-    J: { code: 'J', name: 'Punch', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
-    d_J_low: { code: 'd_J_low', name: 'Low Blow', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
-    K: { code: 'd_J', name: 'Uppercut', damage: 15, reach: 50, duration: 400, color: 0xFF0055, dash: 0, stun: 0 },
-    d_K: { code: 'd_K', name: 'Low Sweep', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
-    L: { code: 'f_J', name: 'Heavy Punch', damage: 25, reach: 70, duration: 600, color: 0xFF8800, dash: 200, stun: 500 },
-    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0xFFFFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 },
-    dash_J: { code: 'dash_J', name: 'Dashing Punch', damage: 20, reach: 80, duration: 500, color: 0xFF3300, dash: 300, stun: 300 },
-    dash_K: { code: 'dash_K', name: 'Slide Sweep', damage: 15, reach: 80, duration: 400, color: 0xFF3300, dash: 300, stun: 200 }
-  },
-  karate: {
-    J: { code: 'J', name: 'Straight Punch', damage: 10, reach: 60, duration: 300, color: 0x55FF55, dash: 0, stun: 0 },
-    d_J_low: { code: 'd_J_low', name: 'Low Punch', damage: 10, reach: 60, duration: 300, color: 0x55FF55, dash: 0, stun: 0 },
-    K: { code: 'K', name: 'Roundhouse Kick', damage: 15, reach: 80, duration: 400, color: 0x00FF88, dash: 0, stun: 0 },
-    d_K: { code: 'd_K', name: 'Low Kick', damage: 10, reach: 70, duration: 300, color: 0x88FF00, dash: 0, stun: 0 },
-    L: { code: 'f_K', name: 'Flying Kick', damage: 25, reach: 100, duration: 600, color: 0x00FFFF, dash: 400, stun: 500 },
-    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0x00FFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 },
-    dash_J: { code: 'dash_J', name: 'Dashing Straight', damage: 20, reach: 80, duration: 500, color: 0x00FF00, dash: 300, stun: 300 },
-    dash_K: { code: 'dash_K', name: 'Slide Kick', damage: 20, reach: 90, duration: 500, color: 0x00FF00, dash: 400, stun: 400 }
-  }
-};
 
 export default class FightScene extends Phaser.Scene {
-  private roomId!: string;
   private myId!: string;
-  private opponentId!: string;
   private initialRoomState!: any;
-  
-  private myPlayer!: Phaser.Physics.Arcade.Sprite;
-  private opponentPlayer!: Phaser.Physics.Arcade.Sprite;
-  
-  private myStickman!: Phaser.GameObjects.Graphics;
-  private opponentStickman!: Phaser.GameObjects.Graphics;
-  
+  private socket!: any;
+  private onGameOver!: (winner: string | null) => void;
+
+  private myPlayer!: any; // Ragdoll object
+  private opponentPlayer!: any;
   private myHead!: Phaser.GameObjects.Image;
   private opponentHead!: Phaser.GameObjects.Image;
-  private myMaskShape!: Phaser.GameObjects.Graphics;
-  private opponentMaskShape!: Phaser.GameObjects.Graphics;
-
-
+  
+  private traps: any[] = [];
+  private phaseText!: Phaser.GameObjects.Text;
+  private timerText!: Phaser.GameObjects.Text;
+  
   private keys!: any;
+  // private myHpText!: Phaser.GameObjects.Text;
+  // private opponentHpText!: Phaser.GameObjects.Text;
 
-  private myHpText!: Phaser.GameObjects.Text;
-  private opponentHpText!: Phaser.GameObjects.Text;
-  private scoreText!: Phaser.GameObjects.Text;
-  private myShield!: Phaser.GameObjects.Arc;
-  private opponentShield!: Phaser.GameObjects.Arc;
-
-  private isTraining: boolean = false;
-  private gameOverProcessed = false;
-  
-  private myState: 'idle' | 'moving' | 'dashing' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
-  private opponentState: 'idle' | 'moving' | 'dashing' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
-  
-  private myActiveSkill: any = null;
-  private opponentActiveSkill: any = null;
-  private isAttacking = false;
-  private stunTimer: Phaser.Time.TimerEvent | null = null;
-  
-  private lastSentData = { x: 0, y: 0, flipX: false, state: 'idle' };
-  
-  private myProjectiles?: Phaser.Physics.Arcade.Group;
-  
-  // Mobile & Combo State
-  private mobileKeys = { W: false, A: false, S: false, D: false, J: false, K: false, L: false, U: false };
-  private mobileJustPressed = { S: false, A: false, D: false, J: false, K: false, L: false };
-  private inputBuffer: { key: string, time: number }[] = [];
+  private phase: string = 'wait';
+  private phaseEndTime: number = 0;
+  private isBurned = false;
 
   constructor() {
     super({ key: 'FightScene' });
   }
 
   init() {
-    this.roomId = this.registry.get('roomId');
     this.myId = this.registry.get('myId');
     this.initialRoomState = this.registry.get('initialRoomState');
-    this.isTraining = this.registry.get('isTraining');
-
-    if (this.isTraining) {
-       this.myId = 'player1';
-       this.opponentId = 'dummy';
-    } else {
-       const playerIds = Object.keys(this.initialRoomState.players);
-       this.opponentId = playerIds.find(id => id !== this.myId) || '';
-    }
+    this.socket = this.registry.get('socket');
+    this.onGameOver = this.registry.get('onGameOver');
   }
 
   preload() {
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x00F0FF, 1);
-    graphics.fillRect(0, 0, 40, 80);
-    graphics.generateTexture('body_blue', 40, 80);
-    graphics.clear();
-    graphics.fillStyle(0xFF3366, 1);
-    graphics.fillRect(0, 0, 40, 80);
-    graphics.generateTexture('body_red', 40, 80);
-    graphics.clear();
-    
-    // Default Face
-    graphics.fillStyle(0xCCCCCC, 1);
-    graphics.fillCircle(25, 25, 25);
-    graphics.lineStyle(2, 0x000000);
-    graphics.strokeCircle(25, 25, 25);
-    graphics.fillStyle(0x000000);
-    graphics.fillCircle(15, 20, 3);
-    graphics.fillCircle(35, 20, 3);
-    graphics.beginPath();
-    graphics.arc(25, 30, 10, 0, Math.PI);
-    graphics.strokePath();
-    graphics.generateTexture('face_placeholder', 50, 50);
-    graphics.destroy();
+    Object.values(this.initialRoomState.players).forEach((p: any) => {
+      if (p.faceImage) {
+        this.load.image(`face_${p.id}`, p.faceImage);
+      }
+    });
 
-    const myData = this.initialRoomState?.players?.[this.myId];
-    const opponentData = this.initialRoomState?.players?.[this.opponentId];
-    
-    if (myData && myData.faceImage) {
-        this.load.image(`face_${this.myId}`, myData.faceImage);
-    }
-    if (opponentData && opponentData.faceImage) {
-        this.load.image(`face_${this.opponentId}`, opponentData.faceImage);
-    }
-
-    // Ki Blast Energy Ball
+    // Trap textures
     const g = this.add.graphics();
-    g.fillStyle(0xFFFFFF, 1);
-    g.fillCircle(15, 15, 5); // core
-    g.fillStyle(0xFFFFFF, 0.4);
-    g.fillCircle(15, 15, 10); // inner glow
-    g.fillStyle(0xFFFFFF, 0.2);
-    g.fillCircle(15, 15, 15); // outer glow
-    g.generateTexture('energy_ball', 30, 30);
+    // Banana
+    g.fillStyle(0xFFFF00, 1);
+    g.fillEllipse(15, 10, 15, 5);
+    g.generateTexture('trap_banana', 30, 20);
+    g.clear();
+    // Fake Treasure
+    g.fillStyle(0xFF0000, 1);
+    g.fillRect(0, 0, 30, 30);
+    g.generateTexture('trap_fake', 30, 30);
+    g.clear();
+    // Real Treasure
+    g.fillStyle(0xFFD700, 1);
+    g.fillCircle(15, 15, 10);
+    g.generateTexture('trap_real', 30, 30);
+    g.clear();
+    // Ground
+    g.fillStyle(0x333333, 1);
+    g.fillRect(0, 0, 1600, 100);
+    g.generateTexture('ground', 1600, 100);
     g.destroy();
   }
 
   create() {
-    this.add.rectangle(400, 300, 800, 600, 0x1A1A2E);
+    this.matter.world.setBounds(0, -1000, 1600, 1600);
+    this.add.rectangle(800, 300, 1600, 1200, 0x1A1A2E);
     
-    const ground = this.physics.add.staticGroup();
-    const groundRect = this.add.rectangle(400, 580, 800, 40, 0x222244);
-    ground.add(groundRect);
-    
-    this.myProjectiles = this.physics.add.group();
+    // Ground
+    this.matter.add.image(800, 550, 'ground', undefined, { isStatic: true, label: 'ground' });
 
-    const myData = this.initialRoomState.players[this.myId];
-    const opponentData = this.initialRoomState.players[this.opponentId];
+    const p1Data = this.initialRoomState.players[this.myId];
+    const oppId = Object.keys(this.initialRoomState.players).find(id => id !== this.myId) || 'dummy';
+    const p2Data = this.initialRoomState.players[oppId];
 
-    this.spawnPlayers(myData, opponentData, ground);
+    this.myPlayer = this.createRagdoll(p1Data.x, 300, `face_${p1Data.id}`, p1Data.id);
+    this.opponentPlayer = this.createRagdoll(p2Data.x, 300, `face_${p2Data.id}`, p2Data.id);
+
+    this.cameras.main.setBounds(0, -1000, 1600, 1600);
+    this.cameras.main.startFollow(this.myPlayer.torso);
 
     if (this.input.keyboard) {
         this.keys = {
@@ -157,726 +88,243 @@ export default class FightScene extends Phaser.Scene {
             A: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
             S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
             D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+            SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
             J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
             K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
-            L: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L),
-            U: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U)
         };
     } else {
-        this.keys = { W: {}, A: {}, S: {}, D: {}, J: {}, K: {}, L: {}, U: {} };
-    }
-    
-    // Always show mobile controls on mobile devices
-    if (!this.sys.game.device.os.desktop) {
-       this.createMobileControls();
+        this.keys = { W: {}, A: {}, S: {}, D: {}, SPACE: {}, J: {}, K: {} };
     }
 
-    this.myHpText = this.add.text(20, 55, `You (HP: ${myData.hp})`, { fontSize: '22px', color: '#00F0FF' });
-    this.opponentHpText = this.add.text(500, 55, `Opponent (HP: ${opponentData.hp})`, { fontSize: '22px', color: '#FF3366' });
-    this.scoreText = this.add.text(400, 60, `0 - 0`, { fontSize: '28px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5);
-    
-    this.add.text(20, 88, `Martial Art: ${myData.martialArt.toUpperCase()}`, { fontSize: '14px', color: '#888' });
-    this.add.text(500, 88, `Martial Art: ${opponentData.martialArt.toUpperCase()}`, { fontSize: '14px', color: '#888' });
+    // UI
+    this.phaseText = this.add.text(400, 50, 'WAITING...', { fontSize: '32px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
+    this.timerText = this.add.text(400, 90, '', { fontSize: '24px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
 
-    if (!this.isTraining) {
-       this.setupFirebaseListeners();
-    }
+    this.setupSocketListeners();
+    
+    // Matter Collision Event
+    this.matter.world.on('collisionstart', (event: any) => {
+       event.pairs.forEach((pair: any) => {
+           const bodyA = pair.bodyA;
+           const bodyB = pair.bodyB;
+           
+           if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
+               this.checkTrapCollision(bodyB);
+               this.checkAttackCollision(bodyB);
+           } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
+               this.checkTrapCollision(bodyA);
+               this.checkAttackCollision(bodyA);
+           }
+       });
+    });
   }
 
-  setupFirebaseListeners() {
-    const opponentRef = ref(database, `rooms/${this.roomId}/players/${this.opponentId}`);
-    const opponentListener = onValue(opponentRef, (snap) => {
-      const data = snap.val();
-      if (data && this.opponentPlayer && this.opponentHead) {
-        this.opponentPlayer.setPosition(data.x, data.y);
-        this.opponentPlayer.setFlipX(data.flipX);
-        this.opponentHpText.setText(`Opponent (HP: ${data.hp})`);
-        this.opponentState = data.state;
-        this.opponentShield.setAlpha(this.opponentState === 'blocking' ? 0.4 : 0);
-      }
-    });
-    
-    const myRef = ref(database, `rooms/${this.roomId}/players/${this.myId}/hp`);
-    onValue(myRef, (snap) => {
-      const hp = snap.val();
-      if (hp !== null) {
-        this.myHpText.setText(`You (HP: ${hp})`);
-        if (hp <= 0) {
-          set(ref(database, `rooms/${this.roomId}/status`), 'game_over');
-          set(ref(database, `rooms/${this.roomId}/winner`), this.opponentId);
-        }
-      }
-    });
+  createRagdoll(x: number, y: number, faceKey: string, playerId: string) {
+    const group = this.matter.world.nextGroup(true);
+    const isMe = playerId === this.myId;
+    const prefix = isMe ? 'my' : 'opp';
 
-    const attackRef = ref(database, `rooms/${this.roomId}/attacks/${this.opponentId}`);
-    onValue(attackRef, (snap) => {
-      const data = snap.val();
-      if (data && this.opponentPlayer && data.ts > Date.now() - 2000) {
-        this.opponentActiveSkill = data.skillData;
-        this.showAttackEffect(this.opponentPlayer, data.skillData, data.flipX);
-        this.time.delayedCall(data.skillData.duration, () => {
-           this.opponentActiveSkill = null;
-        });
-      }
+    const torso = this.matter.add.rectangle(x, y, 30, 50, { 
+       collisionFilter: { group: group }, density: 0.05, label: `${prefix}_torso` 
+    });
+    const head = this.matter.add.circle(x, y - 40, 20, { 
+       collisionFilter: { group: group }, density: 0.01, label: `${prefix}_head` 
     });
     
-    const myStunRef = ref(database, `rooms/${this.roomId}/players/${this.myId}/stunnedUntil`);
-    onValue(myStunRef, (snap) => {
-       const stunnedUntil = snap.val();
-       if (stunnedUntil && stunnedUntil > Date.now()) {
-           this.myState = 'stunned';
-           if (this.stunTimer) this.stunTimer.remove(false);
-           this.stunTimer = this.time.delayedCall(stunnedUntil - Date.now(), () => {
-               this.myState = 'idle';
-           });
+    // Using image for head
+    const faceImg = this.add.image(x, y - 40, this.textures.exists(faceKey) ? faceKey : 'face_placeholder');
+    faceImg.setDisplaySize(40, 40);
+    
+    // Create physics constraint
+    this.matter.add.constraint(torso, head, 40, 0.9, { pointA: { x: 0, y: -25 }, pointB: { x: 0, y: 15 } });
+
+    const leftArm = this.matter.add.rectangle(x - 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
+    const rightArm = this.matter.add.rectangle(x + 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
+    this.matter.add.constraint(torso, leftArm, 5, 0.9, { pointA: { x: -15, y: -20 }, pointB: { x: 0, y: -15 } });
+    this.matter.add.constraint(torso, rightArm, 5, 0.9, { pointA: { x: 15, y: -20 }, pointB: { x: 0, y: -15 } });
+
+    const leftLeg = this.matter.add.rectangle(x - 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.8 });
+    const rightLeg = this.matter.add.rectangle(x + 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.8 });
+    this.matter.add.constraint(torso, leftLeg, 5, 0.9, { pointA: { x: -10, y: 25 }, pointB: { x: 0, y: -20 } });
+    this.matter.add.constraint(torso, rightLeg, 5, 0.9, { pointA: { x: 10, y: 25 }, pointB: { x: 0, y: -20 } });
+
+    // Link image to physics body in update
+    if (isMe) {
+       this.myHead = faceImg;
+    } else {
+       this.opponentHead = faceImg;
+    }
+
+    return { torso, head, leftArm, rightArm, leftLeg, rightLeg, faceImg, id: playerId };
+  }
+
+  setupSocketListeners() {
+    if (!this.socket) return;
+    
+    this.socket.on('phase_changed', (data: any) => {
+       this.phase = data.phase;
+       if (data.timeLimit) {
+           this.phaseEndTime = this.time.now + data.timeLimit;
+       } else {
+           this.phaseEndTime = 0;
+       }
+       
+       if (this.phase === 'phase1') {
+           this.phaseText.setText('PHASE 1: CHƠI DƠ\nGiấu Đồ & Đặt Bẫy!');
+       } else if (this.phase === 'phase2') {
+           this.phaseText.setText('PHASE 2: DÒ MÌN\nBẫy Tàng Hình!');
+       } else if (this.phase === 'phase3') {
+           this.phaseText.setText(`PHASE 3: HỦY DIỆT\nGiữ Báu Vật!`);
        }
     });
 
-    const statusRef = ref(database, `rooms/${this.roomId}/status`);
-    const statusListener = onValue(statusRef, (snap) => {
-      const status = snap.val();
-      if (status === 'game_over' && !this.gameOverProcessed) {
-         this.gameOverProcessed = true;
-         get(ref(database, `rooms/${this.roomId}/winner`)).then((winnerSnap) => {
-            const winner = winnerSnap.val();
-            const isWin = winner === this.myId;
-            
-            set(ref(database, `users/${this.myId}/history/${this.roomId}`), {
-               ts: Date.now(),
-               opponentId: this.opponentId,
-               myMartialArt: this.initialRoomState.players[this.myId].martialArt,
-               result: isWin ? 'win' : 'lose'
-            });
-            
-            if (isWin && !this.isTraining) {
-               get(ref(database, `rooms/${this.roomId}/score/${this.myId}`)).then(scoreSnap => {
-                  const currentScore = scoreSnap.val() || 0;
-                  set(ref(database, `rooms/${this.roomId}/score/${this.myId}`), currentScore + 1);
-               });
-            }
-
-            const showGameOverUI = this.registry.get('showGameOverUI');
-            if (showGameOverUI) showGameOverUI(isWin);
-         });
-      } else if (status === 'playing' && this.gameOverProcessed) {
-         // Rematch accepted
-         this.gameOverProcessed = false;
-         
-         // Reset my state
-         const myInitial = this.initialRoomState.players[this.myId];
-         update(ref(database, `rooms/${this.roomId}/players/${this.myId}`), {
-             x: myInitial.x, y: myInitial.y, hp: 100, state: 'idle', flipX: myInitial.isLeft
-         });
-         
-         this.scene.restart();
-      }
-    });
-
-    // Score listener
-    const scoreRef = ref(database, `rooms/${this.roomId}/score`);
-    const scoreListener = onValue(scoreRef, (snap) => {
-       const scores = snap.val();
-       if (scores) {
-          const myScore = scores[this.myId] || 0;
-          const oppScore = scores[this.opponentId] || 0;
-          this.scoreText.setText(`${myScore} - ${oppScore}`);
+    this.socket.on('opponent_sync', (data: any) => {
+       if (this.opponentPlayer && data.parts) {
+           this.matter.body.setPosition(this.opponentPlayer.torso, { x: data.parts.torso.x, y: data.parts.torso.y });
+           this.matter.body.setAngle(this.opponentPlayer.torso, data.parts.torso.angle);
+           // Simple sync for torso, other parts will naturally drag along, but for strict visual we sync all
+           // To keep it simple, we just sync torso and head
+           this.matter.body.setPosition(this.opponentPlayer.head, { x: data.parts.head.x, y: data.parts.head.y });
+           this.opponentHead.setPosition(data.parts.head.x, data.parts.head.y);
+           this.opponentHead.setRotation(data.parts.head.angle);
        }
     });
 
-    this.events.once('shutdown', () => {
-        off(opponentRef, 'value', opponentListener);
-        off(statusRef, 'value', statusListener);
-        off(scoreRef, 'value', scoreListener);
+    this.socket.on('trap_placed', (trap: any) => {
+       const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: `trap_${trap.id}` });
+       sprite.setData('trapData', trap);
+       this.traps.push(sprite);
+    });
+
+    this.socket.on('trap_triggered', (data: any) => {
+       const trapIndex = this.traps.findIndex(t => t.getData('trapData').id === data.trapId);
+       if (trapIndex !== -1) {
+           this.traps[trapIndex].destroy();
+           this.traps.splice(trapIndex, 1);
+       }
+       if (data.victimId === this.opponentPlayer.id && data.trapType === 'banana') {
+           // Ragdoll opponent
+           this.matter.body.applyForce(this.opponentPlayer.torso, this.opponentPlayer.torso.position, { x: 0, y: -0.1 });
+       }
+    });
+
+    this.socket.on('player_burned', (playerId: string) => {
+       if (playerId === this.myId) {
+           this.isBurned = true;
+           this.myHead.setTint(0x333333); // Black burned face
+       } else {
+           this.opponentHead.setTint(0x333333);
+       }
+    });
+
+    this.socket.on('game_over', (data: any) => {
+       if (this.onGameOver) {
+           this.onGameOver(data.winner);
+       }
     });
   }
 
-  spawnPlayers(myData: any, opponentData: any, ground: Phaser.Physics.Arcade.StaticGroup) {
-    if (this.myPlayer) return;
-
-    this.myPlayer = this.physics.add.sprite(myData.x, myData.y, 'body_blue').setAlpha(0);
-    this.myPlayer.setCollideWorldBounds(true);
-    this.physics.add.collider(this.myPlayer, ground);
-    
-    this.opponentPlayer = this.physics.add.sprite(opponentData.x, opponentData.y, 'body_red').setAlpha(0);
-    this.opponentPlayer.setCollideWorldBounds(true);
-    this.physics.add.collider(this.opponentPlayer, ground);
-    
-    this.opponentPlayer.setFlipX(opponentData.isLeft);
-    this.myPlayer.setFlipX(myData.isLeft);
-    
-    this.myStickman = this.add.graphics();
-    this.opponentStickman = this.add.graphics();
-
-    this.myMaskShape = this.make.graphics();
-    this.myMaskShape.fillStyle(0xffffff).fillCircle(0, 0, 25);
-    
-    this.opponentMaskShape = this.make.graphics();
-    this.opponentMaskShape.fillStyle(0xffffff).fillCircle(0, 0, 25);
-
-    const myFaceKey = this.textures.exists(`face_${this.myId}`) ? `face_${this.myId}` : 'face_placeholder';
-    this.myHead = this.add.image(this.myPlayer.x, this.myPlayer.y - 45, myFaceKey);
-    this.myHead.setDisplaySize(50, 50).setMask(this.myMaskShape.createGeometryMask());
-
-    const opponentFaceKey = this.textures.exists(`face_${this.opponentId}`) ? `face_${this.opponentId}` : 'face_placeholder';
-    this.opponentHead = this.add.image(this.opponentPlayer.x, this.opponentPlayer.y - 45, opponentFaceKey);
-    this.opponentHead.setDisplaySize(50, 50).setMask(this.opponentMaskShape.createGeometryMask());
-    
-    this.myShield = this.add.circle(0, 0, 60, 0x00F0FF, 0.4).setAlpha(0);
-    this.opponentShield = this.add.circle(0, 0, 60, 0xFF3366, 0.4).setAlpha(0);
+  checkTrapCollision(body: any) {
+      if (body.label.startsWith('trap_')) {
+          const trapId = body.label.split('_')[1];
+          const sprite = this.traps.find(t => t.getData('trapData').id === trapId);
+          if (sprite) {
+              const trapData = sprite.getData('trapData');
+              if (trapData.ownerId !== this.myId || this.phase === 'phase2') { // Can trigger own traps in phase 2!
+                 this.socket.emit('trigger_trap', trapId);
+                 
+                 // Apply local physics immediately
+                 if (trapData.type === 'banana') {
+                     this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.2 });
+                 }
+              }
+          }
+      }
   }
 
-  update(time: number) {
+  checkAttackCollision(body: any) {
+      // In phase 3, if we touch opponent, it's an attack
+      if (this.phase === 'phase3' && (body.label.includes('opp_'))) {
+          // Send attack hit
+          if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+              this.socket.emit('attack_hit', { targetId: this.opponentPlayer.id });
+              // Push them
+              this.matter.body.applyForce(this.opponentPlayer.torso, this.opponentPlayer.torso.position, { x: (this.myPlayer.torso.position.x < this.opponentPlayer.torso.position.x ? 0.05 : -0.05), y: -0.05 });
+          }
+      }
+  }
+
+  update(time: number, _delta: number) {
     if (!this.myPlayer) return;
 
-    this.updateHeadsAndShields();
-    this.drawStickman(this.myStickman, this.myPlayer, this.myState, this.myActiveSkill, 0x00F0FF, time);
-    this.drawStickman(this.opponentStickman, this.opponentPlayer, this.opponentState, this.opponentActiveSkill, 0xFF3366, time);
+    this.myHead.setPosition(this.myPlayer.head.position.x, this.myPlayer.head.position.y);
+    this.myHead.setRotation(this.myPlayer.head.angle);
 
-    this.handleProjectiles();
-
-    if (this.myState === 'stunned' || this.isAttacking) {
-      if (this.myState === 'stunned') this.myPlayer.setVelocityX(0);
-      this.syncFirebase();
-      return;
-    }
-    
-    // Movement
-    let velocityX = 0;
-    let flipX = this.myPlayer.flipX;
-    let isMoving = false;
-
-    const isLeftDown = this.keys.A.isDown || this.mobileKeys.A;
-    const isRightDown = this.keys.D.isDown || this.mobileKeys.D;
-    const isUpDown = this.keys.W.isDown || this.mobileKeys.W;
-    const isDownDown = this.keys.S.isDown || this.mobileKeys.S;
-    const isUDown = this.keys.U.isDown || this.mobileKeys.U;
-
-    if (isLeftDown) {
-      if (!this.keys.A.isDown && !this.mobileKeys.A) { /* catch unpress */ } 
-      else if (aJustPressed && this.checkCombo(['A', 'A'], 400)) {
-         this.myState = 'dashing';
-      } else if (this.myState !== 'dashing') {
-         this.myState = 'moving';
-      }
-      velocityX = this.myState === 'dashing' ? -400 : -200;
-      flipX = true;
-      isMoving = true;
-    } else if (isRightDown) {
-      if (dJustPressed && this.checkCombo(['D', 'D'], 400)) {
-         this.myState = 'dashing';
-      } else if (this.myState !== 'dashing') {
-         this.myState = 'moving';
-      }
-      velocityX = this.myState === 'dashing' ? 400 : 200;
-      flipX = false;
-      isMoving = true;
+    // Visibility logic (Phase 1 & 2 hide opponent)
+    if (this.phase === 'phase1' || this.phase === 'phase2') {
+       this.opponentHead.setVisible(false);
+       // We can't easily hide matter bodies from debug draw, but we can ignore it in real game.
     } else {
-      if (this.myState === 'dashing' || this.myState === 'moving') this.myState = 'idle';
-    }
-
-    this.myPlayer.setVelocityX(velocityX);
-    this.myPlayer.setFlipX(flipX);
-
-    if (isUDown && this.myPlayer.body?.touching.down) {
-      this.myState = 'blocking';
-      this.myShield.setAlpha(0.4);
-      this.myPlayer.setVelocityX(0); // Cannot move while blocking
-    } else {
-      if (isUpDown && this.myPlayer.body?.touching.down) {
-        this.myPlayer.setVelocityY(-500);
-        isMoving = true;
-      }
-      
-      if (isDownDown) {
-        this.myState = 'crouching';
-        this.myPlayer.setVelocityX(0); // Stop moving when crouching
-      } else if (!isMoving && this.myState !== 'idle') {
-        this.myState = 'idle';
-      }
-      this.myShield.setAlpha(0);
-    }
-
-    const artSkills = SKILLS[this.initialRoomState.players[this.myId].martialArt];
-    if (!artSkills) return;
-    
-    // Check Inputs & Combo Buffer
-    const sJustPressed = (this.keys.S.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.S as any) : false) || this.mobileJustPressed.S;
-    const aJustPressed = (this.keys.A.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.A as any) : false) || this.mobileJustPressed.A;
-    const dJustPressed = (this.keys.D.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.D as any) : false) || this.mobileJustPressed.D;
-    const jJustPressed = (this.keys.J.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.J as any) : false) || this.mobileJustPressed.J;
-    const kJustPressed = (this.keys.K.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.K as any) : false) || this.mobileJustPressed.K;
-    const lJustPressed = (this.keys.L.isDown ? Phaser.Input.Keyboard.JustDown(this.keys.L as any) : false) || this.mobileJustPressed.L;
-
-    if (sJustPressed) this.pushInput('S');
-    if (aJustPressed) this.pushInput('A');
-    if (dJustPressed) this.pushInput('D');
-    if (jJustPressed) this.pushInput('J');
-    if (kJustPressed) this.pushInput('K');
-    if (lJustPressed) this.pushInput('L');
-
-    // Reset mobile flags
-    this.mobileJustPressed.S = false;
-    this.mobileJustPressed.A = false;
-    this.mobileJustPressed.D = false;
-    this.mobileJustPressed.J = false;
-    this.mobileJustPressed.K = false;
-    this.mobileJustPressed.L = false;
-    
-    let skillCode = null;
-    const forwardKey = flipX ? 'A' : 'D';
-    
-    // Combo check (S -> Forward -> J)
-    if (jJustPressed && this.checkCombo(['S', forwardKey, 'J'])) {
-        skillCode = 's_f_J';
-        this.inputBuffer = []; // consume buffer
-    } else if (kJustPressed && isDownDown) {
-        skillCode = 'd_K';
-    } else if (jJustPressed && isDownDown) {
-        skillCode = 'd_J_low';
-    } else if (this.myState === 'dashing' && jJustPressed) {
-        skillCode = 'dash_J';
-    } else if (this.myState === 'dashing' && kJustPressed) {
-        skillCode = 'dash_K';
-    } else if (jJustPressed) {
-        skillCode = 'J';
-    } else if (kJustPressed) {
-        skillCode = 'K';
-    } else if (lJustPressed) {
-        skillCode = 'L';
+       this.opponentHead.setVisible(true);
     }
     
-    if (skillCode && artSkills[skillCode]) {
-      this.performAttack(artSkills[skillCode]);
-    }
-
-    this.syncFirebase();
-  }
-  
-  createMobileControls() {
-    const isMobile = !this.sys.game.device.os.desktop;
-    if (!isMobile) return;
-
-    // Listen to custom events from React UI
-    const handleMobileInput = (e: any) => {
-       const { key, state } = e.detail;
-       if (state === 'down') {
-           this.mobileKeys[key as keyof typeof this.mobileKeys] = true;
-           if (key in this.mobileJustPressed) {
-               this.mobileJustPressed[key as keyof typeof this.mobileJustPressed] = true;
-           }
-       } else if (state === 'up') {
-           this.mobileKeys[key as keyof typeof this.mobileKeys] = false;
-       }
-    };
-
-    window.addEventListener('mobile_input', handleMobileInput);
-
-    this.events.once('shutdown', () => {
-       window.removeEventListener('mobile_input', handleMobileInput);
-    });
-  }
-
-  pushInput(key: string) {
-      const now = this.time.now;
-      this.inputBuffer.push({ key, time: now });
-      this.inputBuffer = this.inputBuffer.filter(i => now - i.time < 800).slice(-10);
-  }
-
-  checkCombo(sequence: string[], maxDelayMs: number = 500): boolean {
-      if (this.inputBuffer.length < sequence.length) return false;
-      const recent = this.inputBuffer.slice(-sequence.length);
-      for (let i = 0; i < sequence.length; i++) {
-         if (recent[i].key !== sequence[i]) return false;
-      }
-      if (recent[recent.length - 1].time - recent[0].time > maxDelayMs) return false;
-      return true;
-  }
-
-  updateHeadsAndShields() {
-    if (this.myHead) {
-      // Lower head if sweeping, flying kicking, or crouching
-      const isCrouching = this.myState === 'crouching' || (this.myState === 'attacking' && (this.myActiveSkill?.code === 'd_K' || this.myActiveSkill?.code === 'd_J_low' || this.myActiveSkill?.code === 'f_K'));
-      const yOffset = isCrouching ? -20 : -45;
-      this.myHead.setPosition(this.myPlayer.x, this.myPlayer.y + yOffset);
-      this.myHead.setFlipX(this.myPlayer.flipX);
-      this.myMaskShape.x = this.myPlayer.x;
-      this.myMaskShape.y = this.myPlayer.y + yOffset;
-    }
-    if (this.opponentHead && this.opponentPlayer) {
-      const isCrouching = this.opponentState === 'crouching' || (this.opponentState === 'attacking' && (this.opponentActiveSkill?.code === 'd_K' || this.opponentActiveSkill?.code === 'd_J_low' || this.opponentActiveSkill?.code === 'f_K'));
-      const yOffset = isCrouching ? -20 : -45;
-      this.opponentHead.setPosition(this.opponentPlayer.x, this.opponentPlayer.y + yOffset);
-      this.opponentHead.setFlipX(this.opponentPlayer.flipX);
-      this.opponentMaskShape.x = this.opponentPlayer.x;
-      this.opponentMaskShape.y = this.opponentPlayer.y + yOffset;
-    }
-    this.myShield.setPosition(this.myPlayer.x, this.myPlayer.y);
-    this.opponentShield.setPosition(this.opponentPlayer.x, this.opponentPlayer.y);
-  }
-
-  drawStickman(g: Phaser.GameObjects.Graphics, player: Phaser.Physics.Arcade.Sprite, state: string, skill: any, color: number, time: number) {
-    g.clear();
-    g.lineStyle(6, color, 1);
-    
-    const x = player.x;
-    const y = player.y;
-    const dir = player.flipX ? -1 : 1;
-    
-    let headY = y - 45;
-    let pelvisY = y + 10;
-    
-    if (state === 'attacking' && skill) {
-       if (skill.code === 'dashing') {
-          // Dashing forward (Lean body)
-          g.lineBetween(x, headY + 25, x + dir*15, pelvisY);
-          g.lineBetween(x + dir*15, pelvisY, x - dir*20, y + 40);
-          g.lineBetween(x + dir*15, pelvisY, x + dir*25, y + 40);
-          // Tucked arms
-          g.lineBetween(x + dir*5, headY + 30, x - dir*10, headY + 45);
-          return;
-       } else if (skill.code === 'd_K') { // Leg Sweep (Crouch Kick)
-          headY = y - 20;
-          pelvisY = y + 25;
-          // Torso
-          g.lineBetween(x, headY + 25, x, pelvisY);
-          // Legs
-          g.lineBetween(x, pelvisY, x - dir*10, y + 40); // Back leg
-          g.lineBetween(x, pelvisY, x + dir*50, y + 40); // Sweep leg
-          // Arms
-          g.lineBetween(x, headY + 30, x + dir*20, headY + 40);
-          g.lineBetween(x, headY + 30, x - dir*10, headY + 40);
-          return;
-       } else if (skill.code === 'd_J_low') { // Low Punch
-          headY = y - 20;
-          pelvisY = y + 25;
-          g.lineBetween(x, headY + 25, x, pelvisY);
-          // Crouched legs
-          g.lineBetween(x, pelvisY, x - dir*15, y + 40);
-          g.lineBetween(x, pelvisY, x + dir*15, y + 40);
-          // Low punch arm
-          g.lineBetween(x, headY + 30, x + dir*40, y + 20); 
-          g.lineBetween(x, headY + 30, x - dir*5, headY + 40);
-          return;
-       } else if (skill.code === 'f_K') { // Flying Kick
-          headY = y - 20;
-          pelvisY = y - 20;
-          // Torso Horizontal
-          g.lineBetween(x - dir*20, headY + 25, x, pelvisY);
-          // Legs
-          g.lineBetween(x, pelvisY, x + dir*50, y); // Flying kick leg
-          g.lineBetween(x, pelvisY, x - dir*30, y + 10); // Back leg folded
-          // Arms
-          g.lineBetween(x - dir*15, headY + 30, x + dir*20, headY + 30);
-          return;
-       } else if (skill.code === 'd_J') { // Uppercut
-          // Torso stretching up
-          g.lineBetween(x, headY + 25, x - dir*10, pelvisY);
-          // Legs
-          g.lineBetween(x - dir*10, pelvisY, x - dir*20, y + 40);
-          g.lineBetween(x - dir*10, pelvisY, x + dir*10, y + 40);
-          // Arms
-          g.lineBetween(x, headY + 30, x + dir*10, headY - 10); // Uppercut arm
-          g.lineBetween(x, headY + 30, x - dir*10, headY + 40);
-          return;
-       } else if (skill.code === 's_f_J') { // Ki Blast (Chưởng)
-          // Torso
-          g.lineBetween(x, headY + 25, x, pelvisY);
-          // Legs (Stanced)
-          g.lineBetween(x, pelvisY, x - dir*20, y + 40);
-          g.lineBetween(x, pelvisY, x + dir*20, y + 40);
-          // Arms (Pushing forward)
-          g.lineBetween(x, headY + 30, x + dir*40, headY + 30);
-          return;
-       }
-    }
-    
-    // Default Torso
-    g.lineBetween(x, headY + 25, x, pelvisY);
-    
-    if (state === 'moving' || state === 'dashing') {
-       const isDash = state === 'dashing';
-       const speed = isDash ? 100 : 50;
-       const swing = Math.sin(time / speed) * (isDash ? 30 : 20);
-       
-       if (isDash) {
-          // Lean forward when dashing
-          g.clear();
-          g.lineStyle(4, color);
-          headY += 10;
-          g.lineBetween(x - dir*10, headY + 25, x + dir*10, pelvisY);
-       }
-       // Legs
-       g.lineBetween(x + (isDash?dir*10:0), pelvisY, x + swing, y + 40);
-       g.lineBetween(x + (isDash?dir*10:0), pelvisY, x - swing, y + 40);
-       // Arms
-       g.lineBetween(x - (isDash?dir*10:0), headY + 30, x - swing, headY + 50);
-       g.lineBetween(x - (isDash?dir*10:0), headY + 30, x + swing, headY + 50);
-    } else if (state === 'attacking' && skill) {
-       // Normal Punch/Kick
-       g.lineBetween(x, pelvisY, x - dir*15, y + 40);
-       g.lineBetween(x, pelvisY, x + dir*15, y + 40);
-       if (skill.code === 'J' || skill.code === 'f_J') {
-         g.lineBetween(x, headY + 30, x + dir*40, headY + 30); // Punch
-         g.lineBetween(x, headY + 30, x - dir*15, headY + 50);
-       } else if (skill.code === 'K') {
-         g.lineBetween(x, pelvisY, x + dir*40, headY + 20); // High Kick
-       }
-    } else if (state === 'crouching') {
-       headY = y - 20;
-       pelvisY = y + 25;
-       g.lineBetween(x, headY + 25, x, pelvisY);
-       // Crouched legs
-       g.lineBetween(x, pelvisY, x - dir*15, y + 40);
-       g.lineBetween(x, pelvisY, x + dir*15, y + 40);
-       // Crouched arms
-       g.lineBetween(x, headY + 30, x + dir*10, headY + 40); // Guard arm
-       g.lineBetween(x, headY + 30, x - dir*5, headY + 40);
-    } else { // Idle or Blocking
-       g.lineBetween(x, pelvisY, x - 10, y + 40);
-       g.lineBetween(x, pelvisY, x + 10, y + 40);
-       g.lineBetween(x, headY + 30, x + dir*15, headY + 45); // Guard arm
-       g.lineBetween(x, headY + 30, x - dir*10, headY + 45);
-    }
-    
-    // Draw Dash Attacks overrides
-    if (state === 'attacking' && skill) {
-       if (skill.code === 'dash_J') { // Dash Punch / Tackle
-          g.clear();
-          g.lineStyle(4, color);
-          // Lean forward heavily
-          g.lineBetween(x - dir*20, headY + 25, x + dir*10, pelvisY);
-          // Legs sliding
-          g.lineBetween(x + dir*10, pelvisY, x - dir*10, y + 40);
-          g.lineBetween(x + dir*10, pelvisY, x - dir*30, y + 40);
-          // Arm thrusting forward
-          g.lineBetween(x - dir*5, headY + 30, x + dir*40, headY + 30);
-       } else if (skill.code === 'dash_K') { // Slide Sweep
-          g.clear();
-          g.lineStyle(4, color);
-          headY = y;
-          pelvisY = y + 25;
-          // Torso leaning back almost on ground
-          g.lineBetween(x - dir*20, headY + 20, x, pelvisY);
-          // Slide kick leg straight forward
-          g.lineBetween(x, pelvisY, x + dir*50, y + 35);
-          // Back leg bent
-          g.lineBetween(x, pelvisY, x - dir*20, y + 40);
-          // Arms on ground for balance
-          g.lineBetween(x - dir*10, headY + 20, x, y + 40);
-       }
-    }
-  }
-
-  syncFirebase() {
-    if (this.isTraining) return;
-    if (Math.abs(this.myPlayer.x - this.lastSentData.x) > 5 || 
-        Math.abs(this.myPlayer.y - this.lastSentData.y) > 5 || 
-        this.myPlayer.flipX !== this.lastSentData.flipX ||
-        this.myState !== this.lastSentData.state) {
-        
-        update(ref(database, `rooms/${this.roomId}/players/${this.myId}`), {
-          x: Math.round(this.myPlayer.x), y: Math.round(this.myPlayer.y),
-          flipX: this.myPlayer.flipX, state: this.myState
-        });
-        this.lastSentData = { x: this.myPlayer.x, y: this.myPlayer.y, flipX: this.myPlayer.flipX, state: this.myState };
-    }
-  }
-
-  performAttack(skillData: any) {
-    this.isAttacking = true;
-    this.myState = 'attacking';
-    this.myShield.setAlpha(0);
-    
-    const flipX = this.myPlayer.flipX;
-    
-    if (skillData.dash > 0) {
-      // 1. Dash phase
-      this.myPlayer.setVelocityX(flipX ? -skillData.dash : skillData.dash);
-      this.myActiveSkill = { code: 'dashing' };
-      
-      // 2. Strike phase (after half duration)
-      this.time.delayedCall(skillData.duration / 2, () => {
-         this.myActiveSkill = skillData;
-         this.myPlayer.setVelocityX(0); // Stop sliding
-         
-         if (!this.isTraining) {
-            set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
-                ts: Date.now(), flipX: flipX, skillData: skillData
-            });
-         }
-         
-         this.showAttackEffect(this.myPlayer, skillData, flipX);
-         this.checkHitBoxCollision(skillData, flipX);
-      });
-      
-    } else {
-      // Normal attack
-      this.myPlayer.setVelocityX(0);
-      this.myActiveSkill = skillData;
-      
-      if (!this.isTraining) {
-         set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
-             ts: Date.now(), flipX: flipX, skillData: skillData
-         });
-      }
-      
-      if (skillData.isProjectile) {
-         this.fireProjectile(this.myPlayer, skillData, flipX);
-      } else {
-         this.showAttackEffect(this.myPlayer, skillData, flipX);
-         this.checkHitBoxCollision(skillData, flipX);
-      }
-    }
-
-    // 3. Reset phase
-    this.time.delayedCall(skillData.duration, () => {
-      this.isAttacking = false;
-      this.myActiveSkill = null;
-      this.myState = 'idle';
-    });
-  }
-  
-  fireProjectile(player: Phaser.Physics.Arcade.Sprite, skillData: any, flipX: boolean) {
-     const proj = this.myProjectiles?.create(player.x + (flipX ? -30 : 30), player.y - 15, 'energy_ball');
-     proj.setTint(skillData.color);
-     proj.setScale(1.5);
-     
-     const particles = this.add.particles(0, 0, 'energy_ball', {
-        speed: 50, scale: { start: 1, end: 0 }, alpha: { start: 0.5, end: 0 }, blendMode: 'ADD', tint: skillData.color, lifespan: 300
-     });
-     particles.startFollow(proj);
-     
-     // Animation glow
-     this.tweens.add({ targets: proj, scale: 2.5, yoyo: true, repeat: -1, duration: 150 });
-     
-     proj.setVelocityX(flipX ? -skillData.projSpeed : skillData.projSpeed);
-     proj.body.allowGravity = false;
-     
-     // Store skillData in projectile for hit detection in update loop
-     proj.setData('skillData', skillData);
-     proj.setData('particles', particles);
-     
-     this.time.delayedCall(2000, () => { 
-       if (proj.active) {
-         proj.destroy();
-         particles.destroy();
-       }
-     }); // Range limit
-  }
-  
-  handleProjectiles() {
-     if (!this.myProjectiles) return;
-     const opponentRect = new Phaser.Geom.Rectangle(this.opponentPlayer.x - 20, this.opponentPlayer.y - 40, 40, 80);
-     
-     this.myProjectiles.getChildren().forEach((p: any) => {
-         if (p.active) {
-            const pRect = new Phaser.Geom.Rectangle(p.x - 15, p.y - 15, 30, 30);
-            if (Phaser.Geom.Intersects.RectangleToRectangle(pRect, opponentRect)) {
-                this.applyDamageToOpponent(p.getData('skillData'));
-                // Explosion effect
-                this.showTextEffect(p.x, p.y, 'BOOM!', p.getData('skillData').color);
-                
-                const parts = p.getData('particles');
-                if (parts) parts.destroy();
-                p.destroy();
-            }
-         }
-     });
-  }
-
-  checkHitBoxCollision(skillData: any, flipX: boolean) {
-    const isLow = skillData.code === 'd_K' || skillData.code === 'd_J_low';
-    const hitBoxRect = new Phaser.Geom.Rectangle(
-      flipX ? this.myPlayer.x - skillData.reach : this.myPlayer.x,
-      this.myPlayer.y + (isLow ? 20 : -20),
-      skillData.reach,
-      40
-    );
-
-    const opponentRect = new Phaser.Geom.Rectangle(
-      this.opponentPlayer.x - 20, this.opponentPlayer.y - 40, 40, 80
-    );
-
-    if (Phaser.Geom.Intersects.RectangleToRectangle(hitBoxRect, opponentRect)) {
-       this.applyDamageToOpponent(skillData);
-    }
-  }
-  
-  applyDamageToOpponent(skillData: any) {
-       let finalDamage = skillData.damage;
-       const isHeavyAttack = skillData.code === 'f_J' || skillData.code === 'f_K'; // L button skills
-       
-       if (this.opponentState === 'blocking') {
-         if (isHeavyAttack) {
-             // Guard Break!
-             this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, 'GUARD BREAK!', 0xFF8800);
-             if (!this.isTraining) set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/stunnedUntil`), Date.now() + 800);
-         } else {
-             finalDamage = Math.max(1, Math.floor(finalDamage * 0.2));
-             this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, 'BLOCKED!', 0xAAAAAA);
-         }
-       } else {
-         this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, `-${finalDamage}`, 0xFF0000);
-         if (skillData.stun > 0 && !this.isTraining) {
-            set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/stunnedUntil`), Date.now() + skillData.stun);
-         }
-       }
-       
-       if (this.isTraining) {
-           const dummyData = this.initialRoomState.players.dummy;
-           dummyData.hp -= finalDamage;
-           this.opponentHpText.setText(`Opponent (HP: ${dummyData.hp})`);
-           if (dummyData.hp <= 0) {
-               this.time.delayedCall(1000, () => {
-                   dummyData.hp = 100;
-                   this.opponentHpText.setText(`Opponent (HP: 100)`);
-                   this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 120, 'HEALED', 0x00FF00);
-               });
-           }
-           return;
-       }
-       
-       get(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/hp`)).then((snap) => {
-           let hp = snap.val() || 100;
-           hp -= finalDamage;
-           set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/hp`), hp);
-       });
-  }
-
-  showAttackEffect(player: Phaser.Physics.Arcade.Sprite, skillData: any, flipX: boolean) {
-    if (skillData.isProjectile) {
-        // Visual only for opponent
-        if (player !== this.myPlayer) {
-           const proj = this.add.sprite(player.x + (flipX ? -30 : 30), player.y - 15, 'energy_ball');
-           proj.setTint(skillData.color);
-           proj.setScale(1.5);
-           
-           const particles = this.add.particles(0, 0, 'energy_ball', {
-              speed: 50, scale: { start: 1, end: 0 }, alpha: { start: 0.5, end: 0 }, blendMode: 'ADD', tint: skillData.color, lifespan: 300
-           });
-           particles.startFollow(proj);
-           
-           this.tweens.add({ targets: proj, scale: 2.5, yoyo: true, repeat: -1, duration: 150 });
-           this.tweens.add({
-              targets: proj, x: flipX ? player.x - 800 : player.x + 800,
-              duration: 2000, onComplete: () => { proj.destroy(); particles.destroy(); }
-           });
+    // Hide traps in Phase 2
+    this.traps.forEach(t => {
+        if (this.phase === 'phase2') {
+            t.setVisible(false);
+        } else if (this.phase === 'phase1' && t.getData('trapData').ownerId !== this.myId) {
+            t.setVisible(false); // Hide opponent's traps in phase 1
+        } else {
+            t.setVisible(true);
         }
-        return;
+    });
+
+    if (this.phaseEndTime > 0) {
+        const remaining = Math.max(0, Math.floor((this.phaseEndTime - time) / 1000));
+        this.timerText.setText(`${remaining}s`);
+    } else {
+        this.timerText.setText('');
+    }
+
+    // Movement
+    let forceX = 0;
+    const speed = this.isBurned ? 0.002 : 0.005;
+
+    if (this.keys.A.isDown) forceX = -speed;
+    if (this.keys.D.isDown) forceX = speed;
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+        if (this.myPlayer.leftLeg.velocity.y < 1 && this.myPlayer.leftLeg.velocity.y > -1) { // roughly on ground
+            this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.08 });
+        }
+    }
+
+    if (forceX !== 0) {
+        this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: forceX, y: 0 });
     }
     
-    // Melee Hitbox Visual
-    const isLow = skillData.code === 'd_K' || skillData.code === 'd_J_low';
-    const hitbox = this.add.rectangle(
-      flipX ? player.x - skillData.reach/2 : player.x + skillData.reach/2,
-      player.y + (isLow ? 30 : 0), skillData.reach, 20, skillData.color, 0.8
-    );
-    this.tweens.add({ targets: hitbox, alpha: 0, width: skillData.reach + 20, duration: skillData.duration / 2, onComplete: () => hitbox.destroy() });
-    this.tweens.add({ targets: player, x: flipX ? player.x + 10 : player.x - 10, yoyo: true, duration: 100 });
-  }
-  
-  showTextEffect(x: number, y: number, text: string, color: number) {
-    const txt = this.add.text(x, y, text, { fontSize: '24px', color: `#${color.toString(16).padStart(6, '0')}`, fontStyle: 'bold' }).setOrigin(0.5);
-    this.tweens.add({ targets: txt, y: y - 50, alpha: 0, duration: 800, onComplete: () => txt.destroy() });
+    // Keep torso upright
+    this.matter.body.setAngle(this.myPlayer.torso, 0);
+
+    // Trap placing
+    if (this.phase === 'phase1') {
+        if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+            this.socket.emit('place_trap', { type: 'banana', x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
+            // Simulate random fake or real treasure for demo
+            const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
+            this.socket.emit('place_trap', { type: type, x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+        }
+    }
+
+    // Sync
+    if (time % 50 < 16) { // ~20fps sync
+        this.socket.emit('sync_state', {
+            parts: {
+                torso: { x: this.myPlayer.torso.position.x, y: this.myPlayer.torso.position.y, angle: this.myPlayer.torso.angle },
+                head: { x: this.myPlayer.head.position.x, y: this.myPlayer.head.position.y, angle: this.myPlayer.head.angle }
+            }
+        });
+    }
   }
 }
