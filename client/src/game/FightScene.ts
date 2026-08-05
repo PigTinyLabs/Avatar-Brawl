@@ -362,18 +362,15 @@ export default class FightScene extends Phaser.Scene {
         this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: forceX, y: 0 });
     }
     
-    // Keep torso upright and add upward force to head for Active Ragdoll
+    // Keep torso and legs upright so the character stands perfectly
     this.matter.body.setAngle(this.myPlayer.torso, 0);
-    this.matter.body.applyForce(this.myPlayer.head, this.myPlayer.head.position, { x: 0, y: -0.015 });
-    // Pull legs down slightly so they don't do a full split
-    this.matter.body.applyForce(this.myPlayer.leftLeg, this.myPlayer.leftLeg.position, { x: 0, y: 0.005 });
-    this.matter.body.applyForce(this.myPlayer.rightLeg, this.myPlayer.rightLeg.position, { x: 0, y: 0.005 });
+    this.matter.body.setAngle(this.myPlayer.leftLeg, 0);
+    this.matter.body.setAngle(this.myPlayer.rightLeg, 0);
     
     if (this.opponentPlayer) {
         this.matter.body.setAngle(this.opponentPlayer.torso, 0);
-        this.matter.body.applyForce(this.opponentPlayer.head, this.opponentPlayer.head.position, { x: 0, y: -0.015 });
-        this.matter.body.applyForce(this.opponentPlayer.leftLeg, this.opponentPlayer.leftLeg.position, { x: 0, y: 0.005 });
-        this.matter.body.applyForce(this.opponentPlayer.rightLeg, this.opponentPlayer.rightLeg.position, { x: 0, y: 0.005 });
+        this.matter.body.setAngle(this.opponentPlayer.leftLeg, 0);
+        this.matter.body.setAngle(this.opponentPlayer.rightLeg, 0);
     }
 
     // Tutorial State Machine
