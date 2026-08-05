@@ -93,21 +93,23 @@ function App() {
       </div>
       
       {/* Top Navbar */}
-      <div style={{ position: 'absolute', top: '10px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.5)', padding: '5px 15px', borderRadius: '20px' }}>
-           <User size={16} /> 
-           <span style={{ fontSize: '0.9rem' }}>{user.isAnonymous ? 'Guest' : user.email}</span>
+      {gameState !== 'playing' && (
+        <div style={{ position: 'absolute', top: '10px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.5)', padding: '5px 15px', borderRadius: '20px' }}>
+             <User size={16} /> 
+             <span style={{ fontSize: '0.9rem' }}>{user.isAnonymous ? 'Guest' : user.email}</span>
+          </div>
+          <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: 'var(--secondary)' }} onClick={() => setShowTutorial(true)}>
+            <BookOpen size={16} /> Tutorial
+          </button>
+          <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem' }} onClick={() => setGameState('history')}>
+            <History size={16} /> History
+          </button>
+          <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: '#ff5555' }} onClick={handleLogout}>
+            <LogOut size={16} /> Logout
+          </button>
         </div>
-        <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: 'var(--secondary)' }} onClick={() => setShowTutorial(true)}>
-          <BookOpen size={16} /> Tutorial
-        </button>
-        <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem' }} onClick={() => setGameState('history')}>
-          <History size={16} /> History
-        </button>
-        <button className="btn" style={{ padding: '5px 10px', fontSize: '0.9rem', color: '#ff5555' }} onClick={handleLogout}>
-          <LogOut size={16} /> Logout
-        </button>
-      </div>
+      )}
 
       {gameState === 'home' && (
         <div className="glass-panel text-center animate-pulse-slow" style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>

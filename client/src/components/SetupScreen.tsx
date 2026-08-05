@@ -67,9 +67,9 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
   }
 
   return (
-    <div className="glass-panel" style={{ width: '800px', maxWidth: '90vw', display: 'flex', gap: '2rem' }}>
+    <div className="glass-panel" style={{ width: '800px', maxWidth: '95vw', display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
       {/* Left: Face Upload */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: '1 1 300px' }}>
         <h2 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Camera /> 1. Prepare Your Face
         </h2>
@@ -135,8 +135,8 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
 
       <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)' }}></div>
 
-      {/* Right: Martial Art */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Right: Martial Art & Start */}
+      <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <h2 style={{ marginBottom: '1rem' }}>2. Choose Martial Art</h2>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
