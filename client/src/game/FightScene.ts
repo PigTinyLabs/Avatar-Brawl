@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { database } from '../firebase';
-import { ref, onValue, set, update, get } from 'firebase/database';
+import { ref, onValue, set, update, get, off } from 'firebase/database';
 
 const SKILLS: Record<string, any> = {
   boxing: {
@@ -108,19 +108,29 @@ export default class FightScene extends Phaser.Scene {
     graphics.beginPath();
     graphics.arc(25, 30, 10, 0, Math.PI);
     graphics.strokePath();
-    graphics.generateTexture('default_face', 50, 50);
-    graphics.clear();
+    graphics.generateTexture('face_placeholder', 50, 50);
+    graphics.destroy();
+
+    const myData = this.initialRoomState?.players?.[this.myId];
+    const opponentData = this.initialRoomState?.players?.[this.opponentId];
+    
+    if (myData && myData.faceImage) {
+        this.load.image(`face_${this.myId}`, myData.faceImage);
+    }
+    if (opponentData && opponentData.faceImage) {
+        this.load.image(`face_${this.opponentId}`, opponentData.faceImage);
+    }
 
     // Ki Blast Energy Ball
-    graphics.fillStyle(0xFFFFFF, 1);
-    graphics.fillCircle(15, 15, 5); // core
-    graphics.fillStyle(0xFFFFFF, 0.4);
-    graphics.fillCircle(15, 15, 10); // inner glow
-    graphics.fillStyle(0xFFFFFF, 0.2);
-    graphics.fillCircle(15, 15, 15); // outer glow
-    graphics.generateTexture('energy_ball', 30, 30);
-    
-    graphics.destroy();
+    const g = this.add.graphics();
+    g.fillStyle(0xFFFFFF, 1);
+    g.fillCircle(15, 15, 5); // core
+    g.fillStyle(0xFFFFFF, 0.4);
+    g.fillCircle(15, 15, 10); // inner glow
+    g.fillStyle(0xFFFFFF, 0.2);
+    g.fillCircle(15, 15, 15); // outer glow
+    g.generateTexture('energy_ball', 30, 30);
+    g.destroy();
   }
 
   create() {
@@ -135,29 +145,7 @@ export default class FightScene extends Phaser.Scene {
     const myData = this.initialRoomState.players[this.myId];
     const opponentData = this.initialRoomState.players[this.opponentId];
 
-    let loadingCount = 0;
-    const checkStart = () => {
-       loadingCount--;
-       if (loadingCount <= 0 && !this.myPlayer) this.spawnPlayers(myData, opponentData, ground);
-    };
-
-    if (myData.faceImage) {
-        loadingCount++;
-        this.textures.addBase64(`face_${this.myId}`, myData.faceImage);
-    }
-    if (opponentData.faceImage) {
-        loadingCount++;
-        this.textures.addBase64(`face_${this.opponentId}`, opponentData.faceImage);
-    }
-
-    if (loadingCount === 0) {
-        this.spawnPlayers(myData, opponentData, ground);
-    } else {
-        this.textures.on('addtexture', checkStart);
-        this.time.delayedCall(1000, () => {
-           if (!this.myPlayer) this.spawnPlayers(myData, opponentData, ground);
-        });
-    }
+    this.spawnPlayers(myData, opponentData, ground);
 
     if (this.input.keyboard) {
         this.keys = {
@@ -191,7 +179,7 @@ export default class FightScene extends Phaser.Scene {
 
   setupFirebaseListeners() {
     const opponentRef = ref(database, `rooms/${this.roomId}/players/${this.opponentId}`);
-    onValue(opponentRef, (snap) => {
+    const opponentListener = onValue(opponentRef, (snap) => {
       const data = snap.val();
       if (data && this.opponentPlayer && this.opponentHead) {
         this.opponentPlayer.setPosition(data.x, data.y);
@@ -239,7 +227,7 @@ export default class FightScene extends Phaser.Scene {
     });
 
     const statusRef = ref(database, `rooms/${this.roomId}/status`);
-    onValue(statusRef, (snap) => {
+    const statusListener = onValue(statusRef, (snap) => {
       const status = snap.val();
       if (status === 'game_over' && !this.gameOverProcessed) {
          this.gameOverProcessed = true;
@@ -280,13 +268,19 @@ export default class FightScene extends Phaser.Scene {
 
     // Score listener
     const scoreRef = ref(database, `rooms/${this.roomId}/score`);
-    onValue(scoreRef, (snap) => {
+    const scoreListener = onValue(scoreRef, (snap) => {
        const scores = snap.val();
        if (scores) {
           const myScore = scores[this.myId] || 0;
           const oppScore = scores[this.opponentId] || 0;
           this.scoreText.setText(`${myScore} - ${oppScore}`);
        }
+    });
+
+    this.events.once('shutdown', () => {
+        off(opponentRef, 'value', opponentListener);
+        off(statusRef, 'value', statusListener);
+        off(scoreRef, 'value', scoreListener);
     });
   }
 
