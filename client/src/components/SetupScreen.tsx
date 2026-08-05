@@ -21,7 +21,7 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
   const [scale, setScale] = useState(1.2)
   const [martialArt, setMartialArt] = useState('boxing')
   const [isLoading, setIsLoading] = useState(true)
-  const editorRef = useRef<InstanceType<typeof AvatarEditor>>(null)
+  const editorRef = useRef<any>(null)
 
   useEffect(() => {
     const loadProfile = async () => {

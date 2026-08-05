@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { database } from '../firebase';
-import { ref, onValue, set, update, get, remove } from 'firebase/database';
+import { ref, onValue, set, update, get } from 'firebase/database';
 
 const SKILLS: Record<string, any> = {
   boxing: {
@@ -47,7 +47,7 @@ export default class FightScene extends Phaser.Scene {
   private myShield!: Phaser.GameObjects.Arc;
   private opponentShield!: Phaser.GameObjects.Arc;
 
-  private onGameOverCallback!: () => void;
+  private isTraining: boolean = false;
   private gameOverProcessed = false;
   
   private myState: 'idle' | 'moving' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
@@ -75,7 +75,6 @@ export default class FightScene extends Phaser.Scene {
     this.roomId = this.registry.get('roomId');
     this.myId = this.registry.get('myId');
     this.initialRoomState = this.registry.get('initialRoomState');
-    this.onGameOverCallback = this.registry.get('onGameOver');
     this.isTraining = this.registry.get('isTraining');
 
     if (this.isTraining) {
