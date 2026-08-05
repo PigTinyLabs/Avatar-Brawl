@@ -119,7 +119,8 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div id="game-container" ref={gameRef} style={{ position: 'relative', width: 800, height: 600, maxWidth: '100vw' }}>
+      <div style={{ position: 'relative', width: 800, height: 600, maxWidth: '100vw' }}>
+          <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%' }}></div>
           {roomData.isTraining && (
              <button 
                onClick={handleLeave} 
