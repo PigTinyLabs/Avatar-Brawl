@@ -23,6 +23,11 @@ export default class FightScene extends Phaser.Scene {
   private phaseEndTime: number = 0;
   private isBurned = false;
 
+  // Tutorial state
+  private isTraining: boolean = false;
+  private tutorialStep: number = 0;
+  private tutorialInstruction!: Phaser.GameObjects.Text;
+
   constructor() {
     super({ key: 'FightScene' });
   }
@@ -113,15 +118,17 @@ export default class FightScene extends Phaser.Scene {
     // UI
     this.phaseText = this.add.text(400, 50, 'WAITING...', { fontSize: '32px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
     this.timerText = this.add.text(400, 90, '', { fontSize: '24px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
+    this.tutorialInstruction = this.add.text(400, 150, '', { fontSize: '20px', color: '#FFD700', align: 'center' }).setOrigin(0.5).setScrollFactor(0);
 
     this.setupSocketListeners();
     
-    if (this.registry.get('isTraining')) {
-       // Fake phase change for training
-       setTimeout(() => {
-           this.phase = 'phase1';
-           this.phaseText.setText('PHASE 1: CHƠI DƠ\nGiấu Đồ & Đặt Bẫy!');
-       }, 1000);
+    this.isTraining = this.registry.get('isTraining');
+    if (this.isTraining) {
+       // Start Tutorial Flow
+       this.phase = 'tutorial';
+       this.phaseText.setText('HƯỚNG DẪN CHƠI');
+       this.tutorialInstruction.setText('Bấm phím A và D để di chuyển trái phải.\nBấm SPACE để nhảy.');
+       this.tutorialStep = 1;
     }
     
     // Matter Collision Event
@@ -248,18 +255,36 @@ export default class FightScene extends Phaser.Scene {
     });
   }
 
+  placeTrapLocal(type: string, x: number, y: number) {
+      const trapId = `trap_${Date.now()}`;
+      const trap = { id: trapId, ownerId: this.myId, type, x, y };
+      const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: `trap_${trap.id}` });
+      sprite.setData('trapData', trap);
+      this.traps.push(sprite);
+  }
+
   checkTrapCollision(body: any) {
       if (body.label.startsWith('trap_')) {
           const trapId = body.label.split('_')[1];
           const sprite = this.traps.find(t => t.getData('trapData').id === trapId);
           if (sprite) {
               const trapData = sprite.getData('trapData');
-              if (trapData.ownerId !== this.myId || this.phase === 'phase2') { // Can trigger own traps in phase 2!
-                 this.socket.emit('trigger_trap', trapId);
+              if (trapData.ownerId !== this.myId || this.phase === 'phase2' || this.isTraining) { // Can trigger own traps in phase 2!
+                 if (!this.isTraining) {
+                     this.socket.emit('trigger_trap', trapId);
+                 } else {
+                     // Local trigger for tutorial
+                     sprite.destroy();
+                     this.traps = this.traps.filter(t => t !== sprite);
+                 }
                  
                  // Apply local physics immediately
                  if (trapData.type === 'banana') {
                      this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.2 });
+                     
+                     if (this.isTraining && this.tutorialStep === 5) {
+                         this.tutorialStep = 6;
+                     }
                  }
               }
           }
@@ -271,9 +296,14 @@ export default class FightScene extends Phaser.Scene {
       if (this.phase === 'phase3' && (body.label.includes('opp_'))) {
           // Send attack hit
           if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
-              this.socket.emit('attack_hit', { targetId: this.opponentPlayer.id });
+              if (!this.isTraining) this.socket.emit('attack_hit', { targetId: this.opponentPlayer.id });
               // Push them
               this.matter.body.applyForce(this.opponentPlayer.torso, this.opponentPlayer.torso.position, { x: (this.myPlayer.torso.position.x < this.opponentPlayer.torso.position.x ? 0.05 : -0.05), y: -0.05 });
+              
+              if (this.isTraining && this.tutorialStep === 6) {
+                  this.tutorialStep = 7;
+                  this.tutorialInstruction.setText('Tuyệt vời! Bạn đã hoàn thành khóa huấn luyện.\nBây giờ bạn có thể Quit và tìm trận đấu thật!');
+              }
           }
       }
   }
@@ -326,18 +356,61 @@ export default class FightScene extends Phaser.Scene {
         this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: forceX, y: 0 });
     }
     
-    // Keep torso upright
+    // Keep torso upright and add upward force to head for Active Ragdoll
     this.matter.body.setAngle(this.myPlayer.torso, 0);
+    this.matter.body.applyForce(this.myPlayer.head, this.myPlayer.head.position, { x: 0, y: -0.015 });
+    
+    if (this.opponentPlayer) {
+        this.matter.body.setAngle(this.opponentPlayer.torso, 0);
+        this.matter.body.applyForce(this.opponentPlayer.head, this.opponentPlayer.head.position, { x: 0, y: -0.015 });
+    }
 
-    // Trap placing
-    if (this.phase === 'phase1') {
-        if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
-            this.socket.emit('place_trap', { type: 'banana', x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+    // Tutorial State Machine
+    if (this.isTraining) {
+        if (this.tutorialStep === 1) {
+            if (this.keys.A.isDown || this.keys.D.isDown) {
+                this.tutorialStep = 2;
+                setTimeout(() => {
+                    this.phase = 'phase1';
+                    this.phaseText.setText('PHASE 1: CHƠI DƠ');
+                    this.tutorialInstruction.setText('Tốt lắm! Bây giờ hãy bấm J để đặt Vỏ Chuối.');
+                }, 1500);
+            }
+        } else if (this.tutorialStep === 2 && this.phase === 'phase1') {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+                this.placeTrapLocal('banana', this.myPlayer.torso.position.x, this.myPlayer.leftLeg.position.y + 10);
+                this.tutorialStep = 3;
+                this.tutorialInstruction.setText('Chuối sẽ làm kẻ thù trượt ngã!\nBây giờ bấm K để đặt Báu Vật (Thật hoặc Giả).');
+            }
+        } else if (this.tutorialStep === 3) {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
+                const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
+                this.placeTrapLocal(type, this.myPlayer.torso.position.x, this.myPlayer.leftLeg.position.y + 10);
+                this.tutorialStep = 4;
+                this.tutorialInstruction.setText('Quá đã! Giờ chúng ta sẽ chuyển sang Phase 2...');
+                setTimeout(() => {
+                    this.phase = 'phase2';
+                    this.phaseText.setText('PHASE 2: DÒ MÌN');
+                    this.tutorialStep = 5;
+                    this.tutorialInstruction.setText('Mọi bẫy đều Tàng Hình!\nHãy thử đi lại và tự dẫm vào Vỏ Chuối của bạn xem :)');
+                }, 2000);
+            }
+        } else if (this.tutorialStep === 6) {
+            // Wait for user to trigger trap (checked in checkTrapCollision)
+            this.phase = 'phase3';
+            this.phaseText.setText('PHASE 3: HỦY DIỆT');
+            this.tutorialInstruction.setText('HAHA! Bị trượt vỏ chuối rồi!\nGiờ hãy chạy tới Dummy và bấm J để ĐẤM!');
         }
-        if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
-            // Simulate random fake or real treasure for demo
-            const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
-            this.socket.emit('place_trap', { type: type, x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+    } else {
+        // Online Trap placing
+        if (this.phase === 'phase1') {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+                this.socket.emit('place_trap', { type: 'banana', x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+            }
+            if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
+                const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
+                this.socket.emit('place_trap', { type: type, x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+            }
         }
     }
 
