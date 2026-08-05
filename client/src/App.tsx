@@ -31,11 +31,30 @@ function App() {
     return () => unsub()
   }, [])
 
-  const handleStartSetup = () => setGameState('setup')
+  const handleStartSetup = async () => {
+    setGameState('setup');
+    if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+      try {
+        if (document.documentElement.requestFullscreen) {
+           await document.documentElement.requestFullscreen();
+        }
+        if (window.screen.orientation && window.screen.orientation.lock) {
+           await window.screen.orientation.lock('landscape');
+        }
+      } catch (e) {
+        console.warn("Fullscreen/Orientation lock failed", e);
+      }
+    }
+  }
   
-  const handleSetupComplete = (data: PlayerData) => {
+  const handleSetupComplete = (data: PlayerData, isTraining?: boolean) => {
     setPlayerData(data)
-    setGameState('matchmaking')
+    if (isTraining) {
+        setRoomData({ roomId: 'training', myId: 'player1', isTraining: true })
+        setGameState('playing')
+    } else {
+        setGameState('matchmaking')
+    }
   }
 
   const handleMatchFound = (roomInfo: any) => {
@@ -66,6 +85,13 @@ function App() {
 
   return (
     <div className="app-container">
+      <div className="landscape-warning">
+         <div style={{ textAlign: 'center' }}>
+            <span style={{ fontSize: '4rem', display: 'block', marginBottom: '1rem' }}>🔄📱</span>
+            Vui lòng xoay ngang màn hình điện thoại để chơi!
+         </div>
+      </div>
+      
       {/* Top Navbar */}
       <div style={{ position: 'absolute', top: '10px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(0,0,0,0.5)', padding: '5px 15px', borderRadius: '20px' }}>
@@ -102,7 +128,12 @@ function App() {
       )}
 
       {gameState === 'matchmaking' && (
-        <MatchmakingScreen playerData={playerData} userId={user.uid} onMatchFound={handleMatchFound} />
+        <MatchmakingScreen 
+          playerData={playerData} 
+          userId={user.uid} 
+          onMatchFound={handleMatchFound} 
+          onBack={() => setGameState('setup')} 
+        />
       )}
 
       {gameState === 'playing' && (

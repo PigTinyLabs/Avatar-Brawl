@@ -33,8 +33,7 @@ export default function TutorialModal({ onClose }: TutorialModalProps) {
             <ul style={{ paddingLeft: '20px', marginTop: '10px', lineHeight: '1.6' }}>
               <li><strong>W, A, S, D</strong>: Di chuyển, Nhảy (W), Cúi (S).</li>
               <li><strong>U</strong>: Nhấn giữ để Thủ (Block) - Giảm 80% sát thương.</li>
-              <li><strong>J</strong>: Đấm / Tấn công nhẹ.</li>
-              <li><strong>K</strong>: Kỹ năng phụ / Đá.</li>
+              <li><strong>J / K</strong>: Đấm / Kỹ năng phụ (Nếu đang Đè S để ngồi, sẽ tung đòn gạt chân/đấm thấp).</li>
               <li><strong>L</strong>: Tuyệt chiêu / Tấn công mạnh (Xuyên Thủ / Phá Khiên!).</li>
             </ul>
           </section>

@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import AvatarEditor from 'react-avatar-editor'
 import Dropzone from 'react-dropzone'
-import { Upload, Camera, ChevronRight, HandMetal, ShieldAlert, Loader2, Smile } from 'lucide-react'
+import { Camera, ChevronRight, HandMetal, ShieldAlert, Loader2, Smile } from 'lucide-react'
 import type { PlayerData } from '../types'
 import { database } from '../firebase'
 import { ref, get, set } from 'firebase/database'
 
 interface SetupScreenProps {
   userId: string;
-  onComplete: (data: PlayerData) => void;
+  onComplete: (data: PlayerData, isTraining?: boolean) => void;
 }
 
 const MARTIAL_ARTS = [
@@ -21,7 +21,7 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
   const [scale, setScale] = useState(1.2)
   const [martialArt, setMartialArt] = useState('boxing')
   const [isLoading, setIsLoading] = useState(true)
-  const editorRef = useRef<AvatarEditor>(null)
+  const editorRef = useRef<InstanceType<typeof AvatarEditor>>(null)
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -43,7 +43,7 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (isTraining: boolean = false) => {
     let finalFaceImage = image as string;
     
     if (editorRef.current && typeof image !== 'string') {
@@ -59,7 +59,7 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
     // Save to user profile so they don't have to upload next time
     await set(ref(database, `users/${userId}/profile`), payload);
 
-    onComplete(payload)
+    onComplete(payload, isTraining)
   }
 
   if (isLoading) {
@@ -167,13 +167,22 @@ export default function SetupScreen({ userId, onComplete }: SetupScreenProps) {
           ))}
         </div>
 
-        <button 
-          className="btn btn-primary" 
-          onClick={handleSave}
-          style={{ width: '100%', marginTop: '2rem' }}
-        >
-          Find Match <ChevronRight />
-        </button>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '2rem' }}>
+          <button 
+            className="btn btn-primary" 
+            onClick={() => handleSave(false)}
+            style={{ flex: 2 }}
+          >
+            Find Match <ChevronRight />
+          </button>
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => handleSave(true)}
+            style={{ flex: 1, color: '#fff' }}
+          >
+            Training
+          </button>
+        </div>
       </div>
     </div>
   )

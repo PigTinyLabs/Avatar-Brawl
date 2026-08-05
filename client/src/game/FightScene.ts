@@ -5,13 +5,17 @@ import { ref, onValue, set, update, get, remove } from 'firebase/database';
 const SKILLS: Record<string, any> = {
   boxing: {
     J: { code: 'J', name: 'Punch', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
+    d_J_low: { code: 'd_J_low', name: 'Low Blow', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
     K: { code: 'd_J', name: 'Uppercut', damage: 15, reach: 50, duration: 400, color: 0xFF0055, dash: 0, stun: 0 },
+    d_K: { code: 'd_K', name: 'Low Sweep', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
     L: { code: 'f_J', name: 'Heavy Punch', damage: 25, reach: 70, duration: 600, color: 0xFF8800, dash: 200, stun: 500 },
     s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0xFFFFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 }
   },
   karate: {
     J: { code: 'J', name: 'Straight Punch', damage: 10, reach: 60, duration: 300, color: 0x55FF55, dash: 0, stun: 0 },
+    d_J_low: { code: 'd_J_low', name: 'Low Punch', damage: 10, reach: 60, duration: 300, color: 0x55FF55, dash: 0, stun: 0 },
     K: { code: 'K', name: 'Roundhouse Kick', damage: 15, reach: 80, duration: 400, color: 0x00FF88, dash: 0, stun: 0 },
+    d_K: { code: 'd_K', name: 'Low Kick', damage: 10, reach: 70, duration: 300, color: 0x88FF00, dash: 0, stun: 0 },
     L: { code: 'f_K', name: 'Flying Kick', damage: 25, reach: 100, duration: 600, color: 0x00FFFF, dash: 400, stun: 500 },
     s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0x00FFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 }
   }
@@ -34,11 +38,12 @@ export default class FightScene extends Phaser.Scene {
   private myMaskShape!: Phaser.GameObjects.Graphics;
   private opponentMaskShape!: Phaser.GameObjects.Graphics;
 
-  private cursors!: any;
+
   private keys!: any;
 
   private myHpText!: Phaser.GameObjects.Text;
   private opponentHpText!: Phaser.GameObjects.Text;
+  private scoreText!: Phaser.GameObjects.Text;
   private myShield!: Phaser.GameObjects.Arc;
   private opponentShield!: Phaser.GameObjects.Arc;
 
@@ -55,7 +60,12 @@ export default class FightScene extends Phaser.Scene {
   
   private lastSentData = { x: 0, y: 0, flipX: false, state: 'idle' };
   
-  private myProjectiles: Phaser.Physics.Arcade.Group | null = null;
+  private myProjectiles?: Phaser.Physics.Arcade.Group;
+  
+  // Mobile & Combo State
+  private mobileKeys = { W: false, A: false, S: false, D: false, J: false, K: false, L: false, U: false };
+  private mobileJustPressed = { S: false, A: false, D: false, J: false, K: false, L: false };
+  private inputBuffer: { key: string, time: number }[] = [];
 
   constructor() {
     super({ key: 'FightScene' });
@@ -66,9 +76,15 @@ export default class FightScene extends Phaser.Scene {
     this.myId = this.registry.get('myId');
     this.initialRoomState = this.registry.get('initialRoomState');
     this.onGameOverCallback = this.registry.get('onGameOver');
+    this.isTraining = this.registry.get('isTraining');
 
-    const playerIds = Object.keys(this.initialRoomState.players);
-    this.opponentId = playerIds.find(id => id !== this.myId) || '';
+    if (this.isTraining) {
+       this.myId = 'player1';
+       this.opponentId = 'dummy';
+    } else {
+       const playerIds = Object.keys(this.initialRoomState.players);
+       this.opponentId = playerIds.find(id => id !== this.myId) || '';
+    }
   }
 
   preload() {
@@ -155,15 +171,23 @@ export default class FightScene extends Phaser.Scene {
             L: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L),
             U: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U)
         };
+        
+        // Always show mobile controls on mobile devices
+        if (!this.sys.game.device.os.desktop) {
+           this.createMobileControls();
+        }
     }
 
     this.myHpText = this.add.text(20, 20, `You (HP: ${myData.hp})`, { fontSize: '24px', color: '#00F0FF' });
     this.opponentHpText = this.add.text(500, 20, `Opponent (HP: ${opponentData.hp})`, { fontSize: '24px', color: '#FF3366' });
+    this.scoreText = this.add.text(400, 30, `0 - 0`, { fontSize: '32px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5);
     
     this.add.text(20, 60, `Martial Art: ${myData.martialArt.toUpperCase()}`, { fontSize: '16px', color: '#888' });
     this.add.text(500, 60, `Martial Art: ${opponentData.martialArt.toUpperCase()}`, { fontSize: '16px', color: '#888' });
 
-    this.setupFirebaseListeners();
+    if (!this.isTraining) {
+       this.setupFirebaseListeners();
+    }
   }
 
   setupFirebaseListeners() {
@@ -223,8 +247,6 @@ export default class FightScene extends Phaser.Scene {
          get(ref(database, `rooms/${this.roomId}/winner`)).then((winnerSnap) => {
             const winner = winnerSnap.val();
             const isWin = winner === this.myId;
-            const textToDisplay = isWin ? "You Win!" : "You Lose!";
-            this.add.text(400, 300, textToDisplay, { fontSize: '64px', color: '#FFF', fontStyle: 'bold' }).setOrigin(0.5);
             
             set(ref(database, `users/${this.myId}/history/${this.roomId}`), {
                ts: Date.now(),
@@ -232,13 +254,40 @@ export default class FightScene extends Phaser.Scene {
                myMartialArt: this.initialRoomState.players[this.myId].martialArt,
                result: isWin ? 'win' : 'lose'
             });
+            
+            if (isWin && !this.isTraining) {
+               get(ref(database, `rooms/${this.roomId}/score/${this.myId}`)).then(scoreSnap => {
+                  const currentScore = scoreSnap.val() || 0;
+                  set(ref(database, `rooms/${this.roomId}/score/${this.myId}`), currentScore + 1);
+               });
+            }
 
-            this.time.delayedCall(3000, () => {
-              remove(ref(database, `rooms/${this.roomId}`));
-              this.onGameOverCallback();
-            });
+            const showGameOverUI = this.registry.get('showGameOverUI');
+            if (showGameOverUI) showGameOverUI(isWin);
          });
+      } else if (status === 'playing' && this.gameOverProcessed) {
+         // Rematch accepted
+         this.gameOverProcessed = false;
+         
+         // Reset my state
+         const myInitial = this.initialRoomState.players[this.myId];
+         update(ref(database, `rooms/${this.roomId}/players/${this.myId}`), {
+             x: myInitial.x, y: myInitial.y, hp: 100, state: 'idle', flipX: myInitial.isLeft
+         });
+         
+         this.scene.restart();
       }
+    });
+
+    // Score listener
+    const scoreRef = ref(database, `rooms/${this.roomId}/score`);
+    onValue(scoreRef, (snap) => {
+       const scores = snap.val();
+       if (scores) {
+          const myScore = scores[this.myId] || 0;
+          const oppScore = scores[this.opponentId] || 0;
+          this.scoreText.setText(`${myScore} - ${oppScore}`);
+       }
     });
   }
 
@@ -291,55 +340,92 @@ export default class FightScene extends Phaser.Scene {
       this.syncFirebase();
       return;
     }
-
+    
+    // Movement
     let velocityX = 0;
     let flipX = this.myPlayer.flipX;
     let isMoving = false;
 
-    if (this.keys.A.isDown) { velocityX = -200; flipX = true; isMoving = true; }
-    else if (this.keys.D.isDown) { velocityX = 200; flipX = false; isMoving = true; }
+    const isLeftDown = this.keys.A.isDown || this.mobileKeys.A;
+    const isRightDown = this.keys.D.isDown || this.mobileKeys.D;
+    const isUpDown = this.keys.W.isDown || this.mobileKeys.W;
+    const isDownDown = this.keys.S.isDown || this.mobileKeys.S;
+    const isUDown = this.keys.U.isDown || this.mobileKeys.U;
+
+    if (isLeftDown) {
+      velocityX = -200;
+      flipX = true;
+      isMoving = true;
+    } else if (isRightDown) {
+      velocityX = 200;
+      flipX = false;
+      isMoving = true;
+    }
 
     this.myPlayer.setVelocityX(velocityX);
     this.myPlayer.setFlipX(flipX);
 
-    if (this.keys.U.isDown && this.myPlayer.body?.touching.down) {
+    if (isUDown && this.myPlayer.body?.touching.down) {
       this.myState = 'blocking';
       this.myShield.setAlpha(0.4);
       this.myPlayer.setVelocityX(0); // Cannot move while blocking
     } else {
-      if (this.keys.W.isDown && this.myPlayer.body?.touching.down) {
+      if (isUpDown && this.myPlayer.body?.touching.down) {
         this.myPlayer.setVelocityY(-500);
         isMoving = true;
       }
       
-      if (this.keys.S.isDown) {
+      if (isDownDown) {
         this.myState = 'crouching';
-        this.myPlayer.setVelocityX(0); // Optional: stop moving when crouching
+        this.myPlayer.setVelocityX(0); // Stop moving when crouching
       } else {
         this.myState = isMoving ? 'moving' : 'idle';
       }
       this.myShield.setAlpha(0);
     }
 
-    const martialArt = this.initialRoomState.players[this.myId].martialArt;
-    const artSkills = SKILLS[martialArt] || SKILLS.boxing;
+    const artSkills = SKILLS[this.initialRoomState.players[this.myId].martialArt];
+    if (!artSkills) return;
     
-    const isForwardDown = (!flipX && this.keys.D.isDown) || (flipX && this.keys.A.isDown);
-    const isDownDown = this.keys.S.isDown;
+    // Check Inputs & Combo Buffer
+    const sJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.S) || this.mobileJustPressed.S;
+    const aJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.A) || this.mobileJustPressed.A;
+    const dJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.D) || this.mobileJustPressed.D;
+    const jJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.J) || this.mobileJustPressed.J;
+    const kJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.K) || this.mobileJustPressed.K;
+    const lJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.L) || this.mobileJustPressed.L;
+
+    if (sJustPressed) this.pushInput('S');
+    if (aJustPressed) this.pushInput('A');
+    if (dJustPressed) this.pushInput('D');
+    if (jJustPressed) this.pushInput('J');
+    if (kJustPressed) this.pushInput('K');
+    if (lJustPressed) this.pushInput('L');
+
+    // Reset mobile flags
+    this.mobileJustPressed.S = false;
+    this.mobileJustPressed.A = false;
+    this.mobileJustPressed.D = false;
+    this.mobileJustPressed.J = false;
+    this.mobileJustPressed.K = false;
+    this.mobileJustPressed.L = false;
     
     let skillCode = null;
-    const jPressed = Phaser.Input.Keyboard.JustDown(this.keys.J);
-    const kPressed = Phaser.Input.Keyboard.JustDown(this.keys.K);
-    const lPressed = Phaser.Input.Keyboard.JustDown(this.keys.L);
+    const forwardKey = flipX ? 'A' : 'D';
     
-    // Combo check first
-    if (jPressed && isDownDown && isForwardDown) {
+    // Combo check (S -> Forward -> J)
+    if (jJustPressed && this.checkCombo(['S', forwardKey, 'J'])) {
         skillCode = 's_f_J';
-    } else if (jPressed) {
+        this.inputBuffer = []; // consume buffer
+    } else if (kJustPressed && isDownDown) {
+        skillCode = 'd_K';
+    } else if (jJustPressed && isDownDown) {
+        skillCode = 'd_J_low';
+    } else if (jJustPressed) {
         skillCode = 'J';
-    } else if (kPressed) {
+    } else if (kJustPressed) {
         skillCode = 'K';
-    } else if (lPressed) {
+    } else if (lJustPressed) {
         skillCode = 'L';
     }
     
@@ -350,10 +436,65 @@ export default class FightScene extends Phaser.Scene {
     this.syncFirebase();
   }
   
+  createMobileControls() {
+    const isMobile = !this.sys.game.device.os.desktop;
+    if (!isMobile) return;
+
+    const createBtn = (x: number, y: number, label: string, keyName: string, radius: number = 30) => {
+       const bg = this.add.circle(x, y, radius, 0xFFFFFF, 0.15).setInteractive().setScrollFactor(0).setDepth(100);
+       this.add.text(x, y, label, { fontSize: '20px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+       
+       bg.on('pointerdown', () => { 
+           this.mobileKeys[keyName as keyof typeof this.mobileKeys] = true; 
+           if (keyName in this.mobileJustPressed) {
+               this.mobileJustPressed[keyName as keyof typeof this.mobileJustPressed] = true;
+           }
+           bg.setFillStyle(0xFFFFFF, 0.4);
+       });
+       const release = () => { 
+           this.mobileKeys[keyName as keyof typeof this.mobileKeys] = false; 
+           bg.setFillStyle(0xFFFFFF, 0.15);
+       };
+       bg.on('pointerup', release);
+       bg.on('pointerout', release);
+    };
+
+    const w = this.cameras.main.width;
+    const h = this.cameras.main.height;
+
+    // D-Pad Left
+    createBtn(80, h - 120, 'A', 'A');
+    createBtn(160, h - 120, 'D', 'D');
+    createBtn(120, h - 180, 'W', 'W');
+    createBtn(120, h - 60, 'S', 'S');
+
+    // Action Buttons Right
+    createBtn(w - 180, h - 60, 'J', 'J', 35);
+    createBtn(w - 110, h - 60, 'K', 'K', 35);
+    createBtn(w - 60, h - 120, 'L', 'L', 35);
+    createBtn(w - 200, h - 120, 'U', 'U', 35); // Block
+  }
+
+  pushInput(key: string) {
+      const now = this.time.now;
+      this.inputBuffer.push({ key, time: now });
+      this.inputBuffer = this.inputBuffer.filter(i => now - i.time < 800).slice(-10);
+  }
+
+  checkCombo(sequence: string[], maxDelayMs: number = 500): boolean {
+      if (this.inputBuffer.length < sequence.length) return false;
+      const recent = this.inputBuffer.slice(-sequence.length);
+      for (let i = 0; i < sequence.length; i++) {
+         if (recent[i].key !== sequence[i]) return false;
+      }
+      if (recent[recent.length - 1].time - recent[0].time > maxDelayMs) return false;
+      return true;
+  }
+
   updateHeadsAndShields() {
     if (this.myHead) {
       // Lower head if sweeping, flying kicking, or crouching
-      const isCrouching = this.myState === 'crouching' || (this.myState === 'attacking' && (this.myActiveSkill?.code === 'd_K' || this.myActiveSkill?.code === 'f_K'));
+      const isCrouching = this.myState === 'crouching' || (this.myState === 'attacking' && (this.myActiveSkill?.code === 'd_K' || this.myActiveSkill?.code === 'd_J_low' || this.myActiveSkill?.code === 'f_K'));
       const yOffset = isCrouching ? -20 : -45;
       this.myHead.setPosition(this.myPlayer.x, this.myPlayer.y + yOffset);
       this.myHead.setFlipX(this.myPlayer.flipX);
@@ -361,7 +502,7 @@ export default class FightScene extends Phaser.Scene {
       this.myMaskShape.y = this.myPlayer.y + yOffset;
     }
     if (this.opponentHead && this.opponentPlayer) {
-      const isCrouching = this.opponentState === 'crouching' || (this.opponentState === 'attacking' && (this.opponentActiveSkill?.code === 'd_K' || this.opponentActiveSkill?.code === 'f_K'));
+      const isCrouching = this.opponentState === 'crouching' || (this.opponentState === 'attacking' && (this.opponentActiveSkill?.code === 'd_K' || this.opponentActiveSkill?.code === 'd_J_low' || this.opponentActiveSkill?.code === 'f_K'));
       const yOffset = isCrouching ? -20 : -45;
       this.opponentHead.setPosition(this.opponentPlayer.x, this.opponentPlayer.y + yOffset);
       this.opponentHead.setFlipX(this.opponentPlayer.flipX);
@@ -392,7 +533,7 @@ export default class FightScene extends Phaser.Scene {
           // Tucked arms
           g.lineBetween(x + dir*5, headY + 30, x - dir*10, headY + 45);
           return;
-       } else if (skill.code === 'd_K') { // Leg Sweep (Crouch)
+       } else if (skill.code === 'd_K') { // Leg Sweep (Crouch Kick)
           headY = y - 20;
           pelvisY = y + 25;
           // Torso
@@ -403,6 +544,17 @@ export default class FightScene extends Phaser.Scene {
           // Arms
           g.lineBetween(x, headY + 30, x + dir*20, headY + 40);
           g.lineBetween(x, headY + 30, x - dir*10, headY + 40);
+          return;
+       } else if (skill.code === 'd_J_low') { // Low Punch
+          headY = y - 20;
+          pelvisY = y + 25;
+          g.lineBetween(x, headY + 25, x, pelvisY);
+          // Crouched legs
+          g.lineBetween(x, pelvisY, x - dir*15, y + 40);
+          g.lineBetween(x, pelvisY, x + dir*15, y + 40);
+          // Low punch arm
+          g.lineBetween(x, headY + 30, x + dir*40, y + 20); 
+          g.lineBetween(x, headY + 30, x - dir*5, headY + 40);
           return;
        } else if (skill.code === 'f_K') { // Flying Kick
           headY = y - 20;
@@ -477,6 +629,7 @@ export default class FightScene extends Phaser.Scene {
   }
 
   syncFirebase() {
+    if (this.isTraining) return;
     if (Math.abs(this.myPlayer.x - this.lastSentData.x) > 5 || 
         Math.abs(this.myPlayer.y - this.lastSentData.y) > 5 || 
         this.myPlayer.flipX !== this.lastSentData.flipX ||
@@ -507,9 +660,11 @@ export default class FightScene extends Phaser.Scene {
          this.myActiveSkill = skillData;
          this.myPlayer.setVelocityX(0); // Stop sliding
          
-         set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
-             ts: Date.now(), flipX: flipX, skillData: skillData
-         });
+         if (!this.isTraining) {
+            set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
+                ts: Date.now(), flipX: flipX, skillData: skillData
+            });
+         }
          
          this.showAttackEffect(this.myPlayer, skillData, flipX);
          this.checkHitBoxCollision(skillData, flipX);
@@ -520,9 +675,11 @@ export default class FightScene extends Phaser.Scene {
       this.myPlayer.setVelocityX(0);
       this.myActiveSkill = skillData;
       
-      set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
-          ts: Date.now(), flipX: flipX, skillData: skillData
-      });
+      if (!this.isTraining) {
+         set(ref(database, `rooms/${this.roomId}/attacks/${this.myId}`), {
+             ts: Date.now(), flipX: flipX, skillData: skillData
+         });
+      }
       
       if (skillData.isProjectile) {
          this.fireProjectile(this.myPlayer, skillData, flipX);
@@ -589,9 +746,10 @@ export default class FightScene extends Phaser.Scene {
   }
 
   checkHitBoxCollision(skillData: any, flipX: boolean) {
+    const isLow = skillData.code === 'd_K' || skillData.code === 'd_J_low';
     const hitBoxRect = new Phaser.Geom.Rectangle(
       flipX ? this.myPlayer.x - skillData.reach : this.myPlayer.x,
-      this.myPlayer.y - 20,
+      this.myPlayer.y + (isLow ? 20 : -20),
       skillData.reach,
       40
     );
@@ -613,16 +771,30 @@ export default class FightScene extends Phaser.Scene {
          if (isHeavyAttack) {
              // Guard Break!
              this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, 'GUARD BREAK!', 0xFF8800);
-             set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/stunnedUntil`), Date.now() + 800);
+             if (!this.isTraining) set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/stunnedUntil`), Date.now() + 800);
          } else {
              finalDamage = Math.max(1, Math.floor(finalDamage * 0.2));
              this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, 'BLOCKED!', 0xAAAAAA);
          }
        } else {
          this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 80, `-${finalDamage}`, 0xFF0000);
-         if (skillData.stun > 0) {
+         if (skillData.stun > 0 && !this.isTraining) {
             set(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/stunnedUntil`), Date.now() + skillData.stun);
          }
+       }
+       
+       if (this.isTraining) {
+           const dummyData = this.initialRoomState.players.dummy;
+           dummyData.hp -= finalDamage;
+           this.opponentHpText.setText(`Opponent (HP: ${dummyData.hp})`);
+           if (dummyData.hp <= 0) {
+               this.time.delayedCall(1000, () => {
+                   dummyData.hp = 100;
+                   this.opponentHpText.setText(`Opponent (HP: 100)`);
+                   this.showTextEffect(this.opponentPlayer.x, this.opponentPlayer.y - 120, 'HEALED', 0x00FF00);
+               });
+           }
+           return;
        }
        
        get(ref(database, `rooms/${this.roomId}/players/${this.opponentId}/hp`)).then((snap) => {
@@ -655,9 +827,10 @@ export default class FightScene extends Phaser.Scene {
     }
     
     // Melee Hitbox Visual
+    const isLow = skillData.code === 'd_K' || skillData.code === 'd_J_low';
     const hitbox = this.add.rectangle(
       flipX ? player.x - skillData.reach/2 : player.x + skillData.reach/2,
-      player.y, skillData.reach, 20, skillData.color, 0.8
+      player.y + (isLow ? 30 : 0), skillData.reach, 20, skillData.color, 0.8
     );
     this.tweens.add({ targets: hitbox, alpha: 0, width: skillData.reach + 20, duration: skillData.duration / 2, onComplete: () => hitbox.destroy() });
     this.tweens.add({ targets: player, x: flipX ? player.x + 10 : player.x - 10, yoyo: true, duration: 100 });

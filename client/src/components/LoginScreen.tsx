@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword 
 } from 'firebase/auth'
-import { User, LogIn, UserPlus, Ghost } from 'lucide-react'
+import { LogIn, UserPlus, Ghost } from 'lucide-react'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -51,7 +51,9 @@ export default function LoginScreen() {
 
   return (
     <div className="glass-panel" style={{ width: '400px', maxWidth: '90vw' }}>
-      <h2 style={{ textAlign: 'center', marginBottom: '2rem', color: 'var(--primary)' }}>FACE FIGHTERS</h2>
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+         <img src="/logo.png" alt="Avatar Brawl Logo" style={{ width: '200px', maxWidth: '100%', borderRadius: '15px', boxShadow: '0 0 20px rgba(0,255,255,0.3)' }} />
+      </div>
       
       {error && (
         <div style={{ background: 'rgba(255,0,0,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem' }}>

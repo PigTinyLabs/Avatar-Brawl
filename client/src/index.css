@@ -33,6 +33,33 @@ body {
   flex-direction: column;
 }
 
+.app-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.landscape-warning {
+  display: none;
+}
+
+@media screen and (max-width: 850px) and (orientation: portrait) {
+  .landscape-warning {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-dark);
+    color: var(--text-main);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+}
+
 /* Glassmorphism Panel */
 .glass-panel {
   background: var(--bg-panel);
