@@ -6,7 +6,7 @@ export default class FightScene extends Phaser.Scene {
   private socket!: any;
   private onGameOver!: (winner: string | null) => void;
 
-  private myPlayer!: any; // Ragdoll object
+  private myPlayer!: any; // { body, headImage, bodyGraphics, id }
   private opponentPlayer!: any;
   private myHead!: Phaser.GameObjects.Image;
   private opponentHead!: Phaser.GameObjects.Image;
@@ -16,8 +16,6 @@ export default class FightScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   
   private keys!: any;
-  // private myHpText!: Phaser.GameObjects.Text;
-  // private opponentHpText!: Phaser.GameObjects.Text;
 
   private phase: string = 'wait';
   private phaseEndTime: number = 0;
@@ -77,32 +75,45 @@ export default class FightScene extends Phaser.Scene {
     g.fillCircle(15, 15, 10);
     g.generateTexture('trap_real', 30, 30);
     g.clear();
-    // Ground
-    g.fillStyle(0x333333, 1);
-    g.fillRect(0, 0, 1600, 100);
-    g.generateTexture('ground', 1600, 100);
-    g.destroy();
+    
+    // Background Grid for Top-Down
+    g.lineStyle(1, 0x333333, 1);
+    for (let i = 0; i <= 1600; i += 50) {
+        g.moveTo(i, 0); g.lineTo(i, 1200);
+    }
+    for (let j = 0; j <= 1200; j += 50) {
+        g.moveTo(0, j); g.lineTo(1600, j);
+    }
+    g.strokePath();
+    g.generateTexture('bg_grid', 1600, 1200);
+    g.clear();
   }
 
   create() {
-    this.matter.world.setBounds(0, -1000, 1600, 1600);
-    this.add.rectangle(800, 300, 1600, 1200, 0x1A1A2E);
-    
-    // Ground
-    this.matter.add.image(800, 550, 'ground', undefined, { isStatic: true, label: 'ground' });
+    this.isTraining = this.registry.get('isTraining');
+    if (this.isTraining) {
+        this.phase = 'tutorial';
+        this.tutorialStep = 1;
+        this.time.delayedCall(1000, () => {
+            this.tutorialInstruction.setText('Chào mừng đến Trại Huấn Luyện!\nHãy dùng W A S D để di chuyển.');
+        });
+    }
+
+    // Set world bounds (Top-Down Arena)
+    this.matter.world.setBounds(0, 0, 1600, 1200);
+    this.add.image(800, 600, 'bg_grid').setDepth(-10);
 
     const p1Data = this.initialRoomState.players[this.myId];
     const oppId = Object.keys(this.initialRoomState.players).find(id => id !== this.myId) || 'dummy';
     const p2Data = this.initialRoomState.players[oppId];
 
-    this.myPlayer = this.createRagdoll(p1Data.x, 300, `face_${p1Data.id}`, p1Data.id);
-    this.opponentPlayer = this.createRagdoll(p2Data.x, 300, `face_${p2Data.id}`, p2Data.id);
+    this.myPlayer = this.createTopDownPlayer(p1Data.x, p1Data.y, `face_${p1Data.id}`, p1Data.id);
+    this.opponentPlayer = this.createTopDownPlayer(p2Data.x, p2Data.y, `face_${p2Data.id}`, p2Data.id);
     
     // Expose for E2E testing
     (window as any).fightScene = this;
 
-
-    this.cameras.main.setBounds(0, -1000, 1600, 1600);
+    this.cameras.main.setBounds(0, 0, 1600, 1200);
     this.cameras.main.startFollow(this.myHead);
 
     if (this.input.keyboard) {
@@ -113,38 +124,76 @@ export default class FightScene extends Phaser.Scene {
             D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
             SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
             J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
-            K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
+            K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K)
         };
-    } else {
-        this.keys = { W: {}, A: {}, S: {}, D: {}, SPACE: {}, J: {}, K: {} };
     }
 
-    // UI
-    this.phaseText = this.add.text(400, 50, 'WAITING...', { fontSize: '32px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
-    this.timerText = this.add.text(400, 90, '', { fontSize: '24px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0);
-    this.tutorialInstruction = this.add.text(400, 150, '', { fontSize: '20px', color: '#FFD700', align: 'center' }).setOrigin(0.5).setScrollFactor(0);
+    this.phaseText = this.add.text(400, 50, this.isTraining ? 'TRAINING' : 'WAITING FOR PLAYERS', { fontSize: '24px', color: '#fff' }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
+    this.timerText = this.add.text(400, 90, '', { fontSize: '32px', color: '#ff0' }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
+    this.tutorialInstruction = this.add.text(400, 150, '', { fontSize: '18px', color: '#0f0', align: 'center' }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
 
-    this.setupSocketListeners();
+    // Socket Events
+    this.socket.on('phase_change', (data: any) => {
+        this.phase = data.phase;
+        this.phaseEndTime = data.endTime;
+        if (this.phase === 'phase1') this.phaseText.setText('PHASE 1: CHƠI DƠ');
+        if (this.phase === 'phase2') this.phaseText.setText('PHASE 2: DÒ MÌN');
+        if (this.phase === 'phase3') this.phaseText.setText('PHASE 3: HỦY DIỆT');
+    });
+
+    this.socket.on('opponent_sync', (data: any) => {
+       if (data.id !== this.myId && this.opponentPlayer) {
+           this.matter.body.setPosition(this.opponentPlayer.body, { x: data.state.x, y: data.state.y });
+       }
+    });
+
+    this.socket.on('trap_placed', (trap: any) => {
+        if (trap.ownerId !== this.myId) {
+            this.placeTrapLocal(trap.type, trap.x, trap.y, trap.id, trap.ownerId);
+        }
+    });
+
+    this.socket.on('trap_triggered', (data: any) => {
+        const { trapId, victimId } = data;
+        const trapSprite = this.traps.find(t => t.getData('trapData').id === trapId);
+        if (trapSprite) {
+            trapSprite.destroy();
+            this.traps = this.traps.filter(t => t !== trapSprite);
+        }
+        if (victimId === this.myId) {
+            this.matter.body.applyForce(this.myPlayer.body, this.myPlayer.body.position, { x: (Math.random() - 0.5) * 0.1, y: -0.1 }); // knockback
+            this.isBurned = true;
+            this.myHead.setTint(0x333333);
+        } else if (victimId === this.opponentPlayer?.id) {
+            this.opponentHead.setTint(0x333333);
+        }
+    });
+
+    this.socket.on('game_over', (data: any) => {
+       if (this.onGameOver) {
+           this.onGameOver(data.winner);
+       }
+    });
     
-    this.isTraining = this.registry.get('isTraining');
-    if (this.isTraining) {
-       // Start Tutorial Flow
-       this.phase = 'tutorial';
-       this.phaseText.setText('HƯỚNG DẪN CHƠI');
-       this.tutorialInstruction.setText('A/D để đi lại. W hoặc SPACE để nhảy.');
-       this.tutorialStep = 1;
-    }
-    
+    // Setup Mobile Input
+    window.addEventListener('mobile_input', ((e: CustomEvent) => {
+        const { key, state } = e.detail;
+        if (this.keys && this.keys[key]) {
+             if (state === 'down') this.keys[key].isDown = true;
+             else this.keys[key].isDown = false;
+        }
+    }) as EventListener);
+
     // Matter Collision Event
     this.matter.world.on('collisionstart', (event: any) => {
         event.pairs.forEach((pair: any) => {
             const bodyA = pair.bodyA;
             const bodyB = pair.bodyB;
             
-            if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
+            if (bodyA.label === 'my_player') {
                 this.checkTrapCollision(bodyB);
                 this.checkAttackCollision(bodyB);
-            } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
+            } else if (bodyB.label === 'my_player') {
                 this.checkTrapCollision(bodyA);
                 this.checkAttackCollision(bodyA);
             }
@@ -156,128 +205,55 @@ export default class FightScene extends Phaser.Scene {
             const bodyA = pair.bodyA;
             const bodyB = pair.bodyB;
             
-            if (bodyA.label === 'my_torso' || bodyA.label === 'my_leg' || bodyA.label === 'my_head') {
+            if (bodyA.label === 'my_player') {
                 this.checkTrapCollision(bodyB);
-            } else if (bodyB.label === 'my_torso' || bodyB.label === 'my_leg' || bodyB.label === 'my_head') {
+            } else if (bodyB.label === 'my_player') {
                 this.checkTrapCollision(bodyA);
             }
         });
      });
   }
 
-  createRagdoll(x: number, y: number, faceKey: string, playerId: string) {
-    const group = this.matter.world.nextGroup(true);
+  createTopDownPlayer(x: number, y: number, faceKey: string, playerId: string) {
     const isMe = String(playerId) === String(this.myId);
     const prefix = isMe ? 'my' : 'opp';
 
-    const torso = this.matter.add.rectangle(x, y, 30, 50, { 
-       collisionFilter: { group: group }, density: 0.05, label: `${prefix}_torso` 
+    // Single physics body for top-down
+    const body = this.matter.add.circle(x, y, 20, { 
+       frictionAir: 0.1, 
+       density: 0.05, 
+       label: `${prefix}_player` 
     });
-    const head = this.matter.add.circle(x, y - 40, 20, { 
-       collisionFilter: { group: group }, density: 0.01, label: `${prefix}_head` 
-    });
+
+    const headKey = this.textures.exists(faceKey) ? faceKey : 'face_placeholder';
+    const headImage = this.add.image(x, y, headKey);
+    headImage.setDisplaySize(40, 40);
     
-    // Using image for head
-    const faceImg = this.add.image(x, y - 40, this.textures.exists(faceKey) ? faceKey : 'face_placeholder');
-    faceImg.setDisplaySize(40, 40);
+    // Draw body beneath head
+    const bodyGraphics = this.add.graphics();
+    bodyGraphics.fillStyle(isMe ? 0x00aaff : 0xffaa00, 1);
+    bodyGraphics.fillCircle(0, 0, 22);
     
-    // Create physics constraint with length 0 to act as pivot joints
-    this.matter.add.constraint(torso, head, 0, 1, { pointA: { x: 0, y: -25 }, pointB: { x: 0, y: 15 } });
-
-    const leftArm = this.matter.add.rectangle(x - 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
-    const rightArm = this.matter.add.rectangle(x + 25, y, 10, 40, { collisionFilter: { group: group }, label: `${prefix}_arm` });
-    this.matter.add.constraint(torso, leftArm, 0, 1, { pointA: { x: -15, y: -20 }, pointB: { x: 0, y: -15 } });
-    this.matter.add.constraint(torso, rightArm, 0, 1, { pointA: { x: 15, y: -20 }, pointB: { x: 0, y: -15 } });
-
-    const leftLeg = this.matter.add.rectangle(x - 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
-    const rightLeg = this.matter.add.rectangle(x + 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
-    this.matter.add.constraint(torso, leftLeg, 0, 1, { pointA: { x: -10, y: 25 }, pointB: { x: 0, y: -20 } });
-    this.matter.add.constraint(torso, rightLeg, 0, 1, { pointA: { x: 10, y: 25 }, pointB: { x: 0, y: -20 } });
-
-
-    // Link image to physics body in update
     if (isMe) {
-       this.myHead = faceImg;
+        this.myHead = headImage;
+        this.myHead.setDepth(10);
+        bodyGraphics.setDepth(9);
     } else {
-       this.opponentHead = faceImg;
+        this.opponentHead = headImage;
+        this.opponentHead.setDepth(10);
+        bodyGraphics.setDepth(9);
     }
 
-    return { torso, head, leftArm, rightArm, leftLeg, rightLeg, faceImg, id: playerId };
+    return { body, headImage, bodyGraphics, id: playerId };
   }
 
-  setupSocketListeners() {
-    if (!this.socket) return;
-    
-    this.socket.on('phase_changed', (data: any) => {
-       this.phase = data.phase;
-       if (data.timeLimit) {
-           this.phaseEndTime = this.time.now + data.timeLimit;
-       } else {
-           this.phaseEndTime = 0;
-       }
-       
-       if (this.phase === 'phase1') {
-           this.phaseText.setText('PHASE 1: CHƠI DƠ\nGiấu Đồ & Đặt Bẫy!');
-       } else if (this.phase === 'phase2') {
-           this.phaseText.setText('PHASE 2: DÒ MÌN\nBẫy Tàng Hình!');
-       } else if (this.phase === 'phase3') {
-           this.phaseText.setText(`PHASE 3: HỦY DIỆT\nGiữ Báu Vật!`);
-       }
-    });
-
-    this.socket.on('opponent_sync', (data: any) => {
-       if (this.opponentPlayer && data.parts) {
-           this.matter.body.setPosition(this.opponentPlayer.torso, { x: data.parts.torso.x, y: data.parts.torso.y });
-           this.matter.body.setAngle(this.opponentPlayer.torso, data.parts.torso.angle);
-           // Simple sync for torso, other parts will naturally drag along, but for strict visual we sync all
-           // To keep it simple, we just sync torso and head
-           this.matter.body.setPosition(this.opponentPlayer.head, { x: data.parts.head.x, y: data.parts.head.y });
-           if (this.opponentHead) {
-               this.opponentHead.setPosition(data.parts.head.x, data.parts.head.y);
-               this.opponentHead.setRotation(data.parts.head.angle);
-           }
-       }
-    });
-
-    this.socket.on('trap_placed', (trap: any) => {
-       const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: trap.id });
-       sprite.setData('trapData', trap);
-       this.traps.push(sprite);
-    });
-
-    this.socket.on('trap_triggered', (data: any) => {
-       const trapIndex = this.traps.findIndex(t => t.getData('trapData').id === data.trapId);
-       if (trapIndex !== -1) {
-           this.traps[trapIndex].destroy();
-           this.traps.splice(trapIndex, 1);
-       }
-       if (data.victimId === this.opponentPlayer.id && data.trapType === 'banana') {
-           // Ragdoll opponent
-           this.matter.body.applyForce(this.opponentPlayer.torso, this.opponentPlayer.torso.position, { x: 0, y: -0.1 });
-       }
-    });
-
-    this.socket.on('player_burned', (playerId: string) => {
-       if (playerId === this.myId && this.myHead) {
-           this.isBurned = true;
-           this.myHead.setTint(0x333333); // Black burned face
-       } else if (this.opponentHead) {
-           this.opponentHead.setTint(0x333333);
-       }
-    });
-
-    this.socket.on('game_over', (data: any) => {
-       if (this.onGameOver) {
-           this.onGameOver(data.winner);
-       }
-    });
-  }
-
-  placeTrapLocal(type: string, x: number, y: number) {
-      const trapId = `trap_${Date.now()}`;
-      const trap = { id: trapId, ownerId: this.myId, type, x, y };
+  placeTrapLocal(type: string, x: number, y: number, forceId?: string, forceOwner?: string) {
+      const trapId = forceId || `trap_${Date.now()}`;
+      const owner = forceOwner || this.myId;
+      const trap = { id: trapId, ownerId: owner, type, x, y };
       const sprite = this.matter.add.image(trap.x, trap.y, `trap_${trap.type.split('_')[0]}`, undefined, { isStatic: true, isSensor: true, label: trap.id });
       sprite.setData('trapData', trap);
+      sprite.setDepth(5);
       this.traps.push(sprite);
   }
 
@@ -302,7 +278,8 @@ export default class FightScene extends Phaser.Scene {
                  
                  // Apply local physics immediately
                  if (trapData.type === 'banana') {
-                     this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.2 });
+                     // Knockback in top down
+                     this.matter.body.applyForce(this.myPlayer.body, this.myPlayer.body.position, { x: (Math.random() - 0.5) * 0.1, y: -0.1 });
                      
                      if (this.isTraining && this.tutorialStep === 5) {
                          this.tutorialStep = 6;
@@ -315,12 +292,15 @@ export default class FightScene extends Phaser.Scene {
 
   checkAttackCollision(body: any) {
       // In phase 3, if we touch opponent, it's an attack
-      if (this.phase === 'phase3' && (body.label.includes('opp_'))) {
+      if (this.phase === 'phase3' && (body.label === 'opp_player')) {
           // Send attack hit
           if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
               if (!this.isTraining) this.socket.emit('attack_hit', { targetId: this.opponentPlayer.id });
               // Push them
-              this.matter.body.applyForce(this.opponentPlayer.torso, this.opponentPlayer.torso.position, { x: (this.myPlayer.torso.position.x < this.opponentPlayer.torso.position.x ? 0.05 : -0.05), y: -0.05 });
+              this.matter.body.applyForce(this.opponentPlayer.body, this.opponentPlayer.body.position, { 
+                  x: (this.myPlayer.body.position.x < this.opponentPlayer.body.position.x ? 0.05 : -0.05), 
+                  y: (this.myPlayer.body.position.y < this.opponentPlayer.body.position.y ? 0.05 : -0.05) 
+              });
               
               if (this.isTraining && this.tutorialStep === 6) {
                   this.tutorialStep = 7;
@@ -333,21 +313,22 @@ export default class FightScene extends Phaser.Scene {
   update(time: number, _delta: number) {
     if (!this.myPlayer || !this.myHead || !this.opponentHead) return;
 
-    this.myHead.setPosition(this.myPlayer.head.position.x, this.myPlayer.head.position.y);
-    this.myHead.setRotation(this.myPlayer.head.angle);
+    // Sync visual head and body graphics to physics body
+    this.myHead.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
+    this.myPlayer.bodyGraphics.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
 
-    // Sync dummy head in training mode locally
-    if (this.isTraining && this.opponentPlayer && this.opponentHead) {
-        this.opponentHead.setPosition(this.opponentPlayer.head.position.x, this.opponentPlayer.head.position.y);
-        this.opponentHead.setRotation(this.opponentPlayer.head.angle);
+    if (this.opponentPlayer) {
+        this.opponentHead.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
+        this.opponentPlayer.bodyGraphics.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
     }
 
     // Visibility logic (Phase 1 & 2 hide opponent)
     if (this.phase === 'phase1' || this.phase === 'phase2') {
        this.opponentHead.setVisible(false);
-       // We can't easily hide matter bodies from debug draw, but we can ignore it in real game.
+       this.opponentPlayer.bodyGraphics.setVisible(false);
     } else {
        this.opponentHead.setVisible(true);
+       if (this.opponentPlayer) this.opponentPlayer.bodyGraphics.setVisible(true);
     }
     
     // Hide traps in Phase 2
@@ -368,50 +349,28 @@ export default class FightScene extends Phaser.Scene {
         this.timerText.setText('');
     }
 
-    // Movement
+    // Movement (Top-Down 4 directions)
     let forceX = 0;
+    let forceY = 0;
     const speed = this.isBurned ? 0.002 : 0.005;
 
     if (this.keys.A.isDown) forceX = -speed;
     if (this.keys.D.isDown) forceX = speed;
-    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) || Phaser.Input.Keyboard.JustDown(this.keys.W)) {
-        if (this.myPlayer.leftLeg.velocity.y < 1 && this.myPlayer.leftLeg.velocity.y > -1) { // roughly on ground
-            this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.08 });
-        }
-    }
-    
-    if (this.keys.S.isDown) {
-        // Fast fall / Crouch
-        this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: 0.02 });
+    if (this.keys.W.isDown) forceY = -speed;
+    if (this.keys.S.isDown) forceY = speed;
+
+    if (forceX !== 0 || forceY !== 0) {
+        this.matter.body.applyForce(this.myPlayer.body, this.myPlayer.body.position, { x: forceX, y: forceY });
     }
 
-    if (forceX !== 0) {
-        this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: forceX, y: 0 });
-    }
-    
-    // Keep torso upright
-    this.matter.body.setAngle(this.myPlayer.torso, 0);
-    
-    // Simulate walking animation with physics angles
-    if (forceX !== 0) {
-        const swing = Math.sin(time * 0.01) * 0.4; // 0.4 radians ~ 22 degrees
-        this.matter.body.setAngle(this.myPlayer.leftLeg, swing);
-        this.matter.body.setAngle(this.myPlayer.rightLeg, -swing);
-    } else {
-        this.matter.body.setAngle(this.myPlayer.leftLeg, 0);
-        this.matter.body.setAngle(this.myPlayer.rightLeg, 0);
-    }
-    
-    if (this.opponentPlayer) {
-        this.matter.body.setAngle(this.opponentPlayer.torso, 0);
-        this.matter.body.setAngle(this.opponentPlayer.leftLeg, 0);
-        this.matter.body.setAngle(this.opponentPlayer.rightLeg, 0);
-    }
+    // Lock rotation for top-down bodies so they don't spin wildly
+    this.matter.body.setAngle(this.myPlayer.body, 0);
+    if (this.opponentPlayer) this.matter.body.setAngle(this.opponentPlayer.body, 0);
 
     // Tutorial State Machine
     if (this.isTraining) {
         if (this.tutorialStep === 1) {
-            if (this.keys.A.isDown || this.keys.D.isDown) {
+            if (this.keys.A.isDown || this.keys.D.isDown || this.keys.W.isDown || this.keys.S.isDown) {
                 this.tutorialStep = 2;
                 setTimeout(() => {
                     this.phase = 'phase1';
@@ -421,14 +380,14 @@ export default class FightScene extends Phaser.Scene {
             }
         } else if (this.tutorialStep === 2 && this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
-                this.placeTrapLocal('banana', this.myPlayer.torso.position.x, this.myPlayer.leftLeg.position.y + 10);
+                this.placeTrapLocal('banana', this.myPlayer.body.position.x, this.myPlayer.body.position.y);
                 this.tutorialStep = 3;
                 this.tutorialInstruction.setText('Chuối sẽ làm kẻ thù trượt ngã!\nBây giờ bấm K để đặt Báu Vật (Thật hoặc Giả).');
             }
         } else if (this.tutorialStep === 3) {
             if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
                 const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
-                this.placeTrapLocal(type, this.myPlayer.torso.position.x, this.myPlayer.leftLeg.position.y + 10);
+                this.placeTrapLocal(type, this.myPlayer.body.position.x, this.myPlayer.body.position.y);
                 this.tutorialStep = 4;
                 this.tutorialInstruction.setText('Quá đã! Giờ chúng ta sẽ chuyển sang Phase 2...');
                 setTimeout(() => {
@@ -439,7 +398,6 @@ export default class FightScene extends Phaser.Scene {
                 }, 2000);
             }
         } else if (this.tutorialStep === 6) {
-            // Wait for user to trigger trap (checked in checkTrapCollision)
             this.phase = 'phase3';
             this.phaseText.setText('PHASE 3: HỦY DIỆT');
             this.tutorialInstruction.setText('HAHA! Bị trượt vỏ chuối rồi!\nGiờ hãy chạy tới Dummy và bấm J để ĐẤM!');
@@ -448,11 +406,11 @@ export default class FightScene extends Phaser.Scene {
         // Online Trap placing
         if (this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
-                this.socket.emit('place_trap', { type: 'banana', x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+                this.socket.emit('place_trap', { type: 'banana', x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y });
             }
             if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
                 const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
-                this.socket.emit('place_trap', { type: type, x: this.myPlayer.torso.position.x, y: this.myPlayer.leftLeg.position.y + 10 });
+                this.socket.emit('place_trap', { type: type, x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y });
             }
         }
     }
@@ -460,10 +418,7 @@ export default class FightScene extends Phaser.Scene {
     // Sync
     if (time % 50 < 16) { // ~20fps sync
         this.socket.emit('sync_state', {
-            parts: {
-                torso: { x: this.myPlayer.torso.position.x, y: this.myPlayer.torso.position.y, angle: this.myPlayer.torso.angle },
-                head: { x: this.myPlayer.head.position.x, y: this.myPlayer.head.position.y, angle: this.myPlayer.head.angle }
-            }
+            state: { x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y }
         });
     }
   }
