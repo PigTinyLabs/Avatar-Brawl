@@ -363,10 +363,18 @@ export default class FightScene extends Phaser.Scene {
         this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: forceX, y: 0 });
     }
     
-    // Keep torso and legs upright so the character stands perfectly
+    // Keep torso upright
     this.matter.body.setAngle(this.myPlayer.torso, 0);
-    this.matter.body.setAngle(this.myPlayer.leftLeg, 0);
-    this.matter.body.setAngle(this.myPlayer.rightLeg, 0);
+    
+    // Simulate walking animation with physics angles
+    if (forceX !== 0) {
+        const swing = Math.sin(time * 0.01) * 0.4; // 0.4 radians ~ 22 degrees
+        this.matter.body.setAngle(this.myPlayer.leftLeg, swing);
+        this.matter.body.setAngle(this.myPlayer.rightLeg, -swing);
+    } else {
+        this.matter.body.setAngle(this.myPlayer.leftLeg, 0);
+        this.matter.body.setAngle(this.myPlayer.rightLeg, 0);
+    }
     
     if (this.opponentPlayer) {
         this.matter.body.setAngle(this.opponentPlayer.torso, 0);
