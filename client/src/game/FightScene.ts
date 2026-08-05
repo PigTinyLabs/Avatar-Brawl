@@ -314,6 +314,12 @@ export default class FightScene extends Phaser.Scene {
     this.myHead.setPosition(this.myPlayer.head.position.x, this.myPlayer.head.position.y);
     this.myHead.setRotation(this.myPlayer.head.angle);
 
+    // Sync dummy head in training mode locally
+    if (this.isTraining && this.opponentPlayer && this.opponentHead) {
+        this.opponentHead.setPosition(this.opponentPlayer.head.position.x, this.opponentPlayer.head.position.y);
+        this.opponentHead.setRotation(this.opponentPlayer.head.angle);
+    }
+
     // Visibility logic (Phase 1 & 2 hide opponent)
     if (this.phase === 'phase1' || this.phase === 'phase2') {
        this.opponentHead.setVisible(false);
