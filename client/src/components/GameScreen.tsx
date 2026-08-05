@@ -104,30 +104,24 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
       return;
     }
 
-    // Fetch initial room state - wait until BOTH players are present
+    // Listen for room state — start game once BOTH players are present
     const roomRef = ref(database, `rooms/${roomData.roomId}`);
-    let attempts = 0;
-    const maxAttempts = 20; // 10 seconds max
+    let gameStarted = false;
 
-    const waitForBothPlayers = () => {
-      get(roomRef).then((snap) => {
-        if (snap.exists()) {
-          const data = snap.val();
-          const playerIds = Object.keys(data.players || {});
-          if (playerIds.length >= 2) {
-            // Both players present — start game
-            initGame(data);
-          } else if (attempts < maxAttempts) {
-            // Still waiting for opponent to join
-            attempts++;
-            setTimeout(waitForBothPlayers, 500);
-          }
-        }
-      });
-    };
-    waitForBothPlayers();
+    const unsubRoom = onValue(roomRef, (snap) => {
+      if (gameStarted) return; // prevent double-init
+      if (!snap.exists()) return;
+      const data = snap.val();
+      const playerIds = Object.keys(data.players || {});
+      if (playerIds.length >= 2) {
+        gameStarted = true;
+        unsubRoom(); // stop listening once game starts
+        initGame(data);
+      }
+    });
 
     return () => {
+      unsubRoom();
       gameInstance.current?.destroy(true)
       gameInstance.current = null;
     }

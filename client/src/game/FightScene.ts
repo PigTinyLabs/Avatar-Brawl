@@ -9,7 +9,9 @@ const SKILLS: Record<string, any> = {
     K: { code: 'd_J', name: 'Uppercut', damage: 15, reach: 50, duration: 400, color: 0xFF0055, dash: 0, stun: 0 },
     d_K: { code: 'd_K', name: 'Low Sweep', damage: 10, reach: 60, duration: 300, color: 0xFF5555, dash: 0, stun: 0 },
     L: { code: 'f_J', name: 'Heavy Punch', damage: 25, reach: 70, duration: 600, color: 0xFF8800, dash: 200, stun: 500 },
-    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0xFFFFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 }
+    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0xFFFFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 },
+    dash_J: { code: 'dash_J', name: 'Dashing Punch', damage: 20, reach: 80, duration: 500, color: 0xFF3300, dash: 300, stun: 300 },
+    dash_K: { code: 'dash_K', name: 'Slide Sweep', damage: 15, reach: 80, duration: 400, color: 0xFF3300, dash: 300, stun: 200 }
   },
   karate: {
     J: { code: 'J', name: 'Straight Punch', damage: 10, reach: 60, duration: 300, color: 0x55FF55, dash: 0, stun: 0 },
@@ -17,7 +19,9 @@ const SKILLS: Record<string, any> = {
     K: { code: 'K', name: 'Roundhouse Kick', damage: 15, reach: 80, duration: 400, color: 0x00FF88, dash: 0, stun: 0 },
     d_K: { code: 'd_K', name: 'Low Kick', damage: 10, reach: 70, duration: 300, color: 0x88FF00, dash: 0, stun: 0 },
     L: { code: 'f_K', name: 'Flying Kick', damage: 25, reach: 100, duration: 600, color: 0x00FFFF, dash: 400, stun: 500 },
-    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0x00FFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 }
+    s_f_J: { code: 's_f_J', name: 'Ki Blast', damage: 30, reach: 800, duration: 1000, color: 0x00FFFF, dash: 0, stun: 0, isProjectile: true, projSpeed: 600 },
+    dash_J: { code: 'dash_J', name: 'Dashing Straight', damage: 20, reach: 80, duration: 500, color: 0x00FF00, dash: 300, stun: 300 },
+    dash_K: { code: 'dash_K', name: 'Slide Kick', damage: 20, reach: 90, duration: 500, color: 0x00FF00, dash: 400, stun: 400 }
   }
 };
 
@@ -50,8 +54,8 @@ export default class FightScene extends Phaser.Scene {
   private isTraining: boolean = false;
   private gameOverProcessed = false;
   
-  private myState: 'idle' | 'moving' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
-  private opponentState: 'idle' | 'moving' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
+  private myState: 'idle' | 'moving' | 'dashing' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
+  private opponentState: 'idle' | 'moving' | 'dashing' | 'attacking' | 'blocking' | 'stunned' | 'crouching' = 'idle';
   
   private myActiveSkill: any = null;
   private opponentActiveSkill: any = null;
@@ -348,13 +352,26 @@ export default class FightScene extends Phaser.Scene {
     const isUDown = this.keys.U.isDown || this.mobileKeys.U;
 
     if (isLeftDown) {
-      velocityX = -200;
+      if (!this.keys.A.isDown && !this.mobileKeys.A) { /* catch unpress */ } 
+      else if (aJustPressed && this.checkCombo(['A', 'A'], 400)) {
+         this.myState = 'dashing';
+      } else if (this.myState !== 'dashing') {
+         this.myState = 'moving';
+      }
+      velocityX = this.myState === 'dashing' ? -400 : -200;
       flipX = true;
       isMoving = true;
     } else if (isRightDown) {
-      velocityX = 200;
+      if (dJustPressed && this.checkCombo(['D', 'D'], 400)) {
+         this.myState = 'dashing';
+      } else if (this.myState !== 'dashing') {
+         this.myState = 'moving';
+      }
+      velocityX = this.myState === 'dashing' ? 400 : 200;
       flipX = false;
       isMoving = true;
+    } else {
+      if (this.myState === 'dashing' || this.myState === 'moving') this.myState = 'idle';
     }
 
     this.myPlayer.setVelocityX(velocityX);
@@ -373,8 +390,8 @@ export default class FightScene extends Phaser.Scene {
       if (isDownDown) {
         this.myState = 'crouching';
         this.myPlayer.setVelocityX(0); // Stop moving when crouching
-      } else {
-        this.myState = isMoving ? 'moving' : 'idle';
+      } else if (!isMoving && this.myState !== 'idle') {
+        this.myState = 'idle';
       }
       this.myShield.setAlpha(0);
     }
@@ -416,6 +433,10 @@ export default class FightScene extends Phaser.Scene {
         skillCode = 'd_K';
     } else if (jJustPressed && isDownDown) {
         skillCode = 'd_J_low';
+    } else if (this.myState === 'dashing' && jJustPressed) {
+        skillCode = 'dash_J';
+    } else if (this.myState === 'dashing' && kJustPressed) {
+        skillCode = 'dash_K';
     } else if (jJustPressed) {
         skillCode = 'J';
     } else if (kJustPressed) {
@@ -572,14 +593,24 @@ export default class FightScene extends Phaser.Scene {
     // Default Torso
     g.lineBetween(x, headY + 25, x, pelvisY);
     
-    if (state === 'moving') {
-       const swing = Math.sin(time / 50) * 20;
+    if (state === 'moving' || state === 'dashing') {
+       const isDash = state === 'dashing';
+       const speed = isDash ? 100 : 50;
+       const swing = Math.sin(time / speed) * (isDash ? 30 : 20);
+       
+       if (isDash) {
+          // Lean forward when dashing
+          g.clear();
+          g.lineStyle(4, color);
+          headY += 10;
+          g.lineBetween(x - dir*10, headY + 25, x + dir*10, pelvisY);
+       }
        // Legs
-       g.lineBetween(x, pelvisY, x + swing, y + 40);
-       g.lineBetween(x, pelvisY, x - swing, y + 40);
+       g.lineBetween(x + (isDash?dir*10:0), pelvisY, x + swing, y + 40);
+       g.lineBetween(x + (isDash?dir*10:0), pelvisY, x - swing, y + 40);
        // Arms
-       g.lineBetween(x, headY + 30, x - swing, headY + 50);
-       g.lineBetween(x, headY + 30, x + swing, headY + 50);
+       g.lineBetween(x - (isDash?dir*10:0), headY + 30, x - swing, headY + 50);
+       g.lineBetween(x - (isDash?dir*10:0), headY + 30, x + swing, headY + 50);
     } else if (state === 'attacking' && skill) {
        // Normal Punch/Kick
        g.lineBetween(x, pelvisY, x - dir*15, y + 40);
@@ -604,7 +635,35 @@ export default class FightScene extends Phaser.Scene {
        g.lineBetween(x, pelvisY, x - 10, y + 40);
        g.lineBetween(x, pelvisY, x + 10, y + 40);
        g.lineBetween(x, headY + 30, x + dir*15, headY + 45); // Guard arm
-       g.lineBetween(x, headY + 30, x - dir*10, headY + 40);
+       g.lineBetween(x, headY + 30, x - dir*10, headY + 45);
+    }
+    
+    // Draw Dash Attacks overrides
+    if (state === 'attacking' && skill) {
+       if (skill.code === 'dash_J') { // Dash Punch / Tackle
+          g.clear();
+          g.lineStyle(4, color);
+          // Lean forward heavily
+          g.lineBetween(x - dir*20, headY + 25, x + dir*10, pelvisY);
+          // Legs sliding
+          g.lineBetween(x + dir*10, pelvisY, x - dir*10, y + 40);
+          g.lineBetween(x + dir*10, pelvisY, x - dir*30, y + 40);
+          // Arm thrusting forward
+          g.lineBetween(x - dir*5, headY + 30, x + dir*40, headY + 30);
+       } else if (skill.code === 'dash_K') { // Slide Sweep
+          g.clear();
+          g.lineStyle(4, color);
+          headY = y;
+          pelvisY = y + 25;
+          // Torso leaning back almost on ground
+          g.lineBetween(x - dir*20, headY + 20, x, pelvisY);
+          // Slide kick leg straight forward
+          g.lineBetween(x, pelvisY, x + dir*50, y + 35);
+          // Back leg bent
+          g.lineBetween(x, pelvisY, x - dir*20, y + 40);
+          // Arms on ground for balance
+          g.lineBetween(x - dir*10, headY + 20, x, y + 40);
+       }
     }
   }
 
