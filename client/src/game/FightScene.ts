@@ -127,7 +127,7 @@ export default class FightScene extends Phaser.Scene {
        // Start Tutorial Flow
        this.phase = 'tutorial';
        this.phaseText.setText('HƯỚNG DẪN CHƠI');
-       this.tutorialInstruction.setText('Bấm phím A và D để di chuyển trái phải.\nBấm SPACE để nhảy.');
+       this.tutorialInstruction.setText('A/D để đi lại. W hoặc SPACE để nhảy.');
        this.tutorialStep = 1;
     }
     
@@ -353,10 +353,15 @@ export default class FightScene extends Phaser.Scene {
 
     if (this.keys.A.isDown) forceX = -speed;
     if (this.keys.D.isDown) forceX = speed;
-    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) || Phaser.Input.Keyboard.JustDown(this.keys.W)) {
         if (this.myPlayer.leftLeg.velocity.y < 1 && this.myPlayer.leftLeg.velocity.y > -1) { // roughly on ground
             this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: -0.08 });
         }
+    }
+    
+    if (this.keys.S.isDown) {
+        // Fast fall / Crouch
+        this.matter.body.applyForce(this.myPlayer.torso, this.myPlayer.torso.position, { x: 0, y: 0.02 });
     }
 
     if (forceX !== 0) {
