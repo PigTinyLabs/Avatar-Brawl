@@ -80,7 +80,7 @@ export default class FightScene extends Phaser.Scene {
     this.opponentPlayer = this.createRagdoll(p2Data.x, 300, `face_${p2Data.id}`, p2Data.id);
 
     this.cameras.main.setBounds(0, -1000, 1600, 1600);
-    this.cameras.main.startFollow(this.myPlayer.torso);
+    this.cameras.main.startFollow(this.myHead);
 
     if (this.input.keyboard) {
         this.keys = {
