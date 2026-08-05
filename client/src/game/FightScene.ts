@@ -172,8 +172,8 @@ export default class FightScene extends Phaser.Scene {
     this.matter.add.constraint(torso, leftArm, 5, 0.9, { pointA: { x: -15, y: -20 }, pointB: { x: 0, y: -15 } });
     this.matter.add.constraint(torso, rightArm, 5, 0.9, { pointA: { x: 15, y: -20 }, pointB: { x: 0, y: -15 } });
 
-    const leftLeg = this.matter.add.rectangle(x - 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.8 });
-    const rightLeg = this.matter.add.rectangle(x + 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.8 });
+    const leftLeg = this.matter.add.rectangle(x - 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
+    const rightLeg = this.matter.add.rectangle(x + 10, y + 45, 12, 45, { collisionFilter: { group: group }, label: `${prefix}_leg`, friction: 0.1 });
     this.matter.add.constraint(torso, leftLeg, 5, 0.9, { pointA: { x: -10, y: 25 }, pointB: { x: 0, y: -20 } });
     this.matter.add.constraint(torso, rightLeg, 5, 0.9, { pointA: { x: 10, y: 25 }, pointB: { x: 0, y: -20 } });
 
@@ -365,10 +365,15 @@ export default class FightScene extends Phaser.Scene {
     // Keep torso upright and add upward force to head for Active Ragdoll
     this.matter.body.setAngle(this.myPlayer.torso, 0);
     this.matter.body.applyForce(this.myPlayer.head, this.myPlayer.head.position, { x: 0, y: -0.015 });
+    // Pull legs down slightly so they don't do a full split
+    this.matter.body.applyForce(this.myPlayer.leftLeg, this.myPlayer.leftLeg.position, { x: 0, y: 0.005 });
+    this.matter.body.applyForce(this.myPlayer.rightLeg, this.myPlayer.rightLeg.position, { x: 0, y: 0.005 });
     
     if (this.opponentPlayer) {
         this.matter.body.setAngle(this.opponentPlayer.torso, 0);
         this.matter.body.applyForce(this.opponentPlayer.head, this.opponentPlayer.head.position, { x: 0, y: -0.015 });
+        this.matter.body.applyForce(this.opponentPlayer.leftLeg, this.opponentPlayer.leftLeg.position, { x: 0, y: 0.005 });
+        this.matter.body.applyForce(this.opponentPlayer.rightLeg, this.opponentPlayer.rightLeg.position, { x: 0, y: 0.005 });
     }
 
     // Tutorial State Machine
