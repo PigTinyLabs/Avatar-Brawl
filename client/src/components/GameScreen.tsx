@@ -35,6 +35,10 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
             debug: false
           }
         },
+        scale: {
+          mode: Phaser.Scale.FIT,
+          autoCenter: Phaser.Scale.CENTER_BOTH
+        },
         scene: [FightScene],
         backgroundColor: '#1a1a2e',
         callbacks: {
@@ -119,7 +123,7 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ position: 'relative', width: 800, height: 600, maxWidth: '100vw' }}>
+      <div style={{ position: 'relative', width: '100%', maxWidth: 800, height: '100%', maxHeight: 600, margin: 'auto' }}>
           <div id="game-container" ref={gameRef} style={{ width: '100%', height: '100%' }}></div>
           {roomData.isTraining && (
              <button 

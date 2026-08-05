@@ -29,8 +29,11 @@ body {
 #root {
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .app-container {
@@ -40,6 +43,8 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
+  min-height: min-content;
+  padding: 20px 0;
 }
 
 .landscape-warning {
