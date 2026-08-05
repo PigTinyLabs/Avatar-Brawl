@@ -12,6 +12,39 @@ interface GameScreenProps {
   onGameOver: () => void;
 }
 
+const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+const MobileBtn = ({ k, x, y, label, radius = 25 }: { k: string, x: number, y: number, label?: string, radius?: number }) => {
+   const [active, setActive] = useState(false);
+   
+   const handleDown = (e: any) => {
+       e.preventDefault();
+       setActive(true);
+       window.dispatchEvent(new CustomEvent('mobile_input', { detail: { key: k, state: 'down' } }));
+   }
+   
+   const handleUp = (e: any) => {
+       e.preventDefault();
+       setActive(false);
+       window.dispatchEvent(new CustomEvent('mobile_input', { detail: { key: k, state: 'up' } }));
+   }
+   
+   return (
+       <div 
+         onTouchStart={handleDown} onTouchEnd={handleUp} onTouchCancel={handleUp}
+         style={{
+             position: 'absolute', left: x, top: y, width: radius * 2, height: radius * 2, 
+             borderRadius: '50%', background: active ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.15)',
+             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+             fontWeight: 'bold', fontSize: '18px', userSelect: 'none', border: '1px solid rgba(255,255,255,0.3)',
+             zIndex: 100
+         }}
+       >
+         {label || k}
+       </div>
+   )
+}
+
 export default function GameScreen({ playerData, roomData, onGameOver }: GameScreenProps) {
   const [gameOverState, setGameOverState] = useState<{ isWin: boolean } | null>(null)
   const [rematchStatus, setRematchStatus] = useState<string>('')
@@ -138,6 +171,26 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
       <div style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>
         Controls: W A S D to move, J to Attack
       </div>
+
+      {isMobile && (
+        <>
+          {/* Left Controls (D-PAD) */}
+          <div style={{ position: 'absolute', bottom: '20px', left: '20px', width: '160px', height: '160px', zIndex: 100 }}>
+             <MobileBtn k="W" x={55} y={0} />
+             <MobileBtn k="A" x={0} y={55} />
+             <MobileBtn k="S" x={55} y={110} />
+             <MobileBtn k="D" x={110} y={55} />
+          </div>
+
+          {/* Right Controls (Actions) */}
+          <div style={{ position: 'absolute', bottom: '20px', right: '20px', width: '220px', height: '160px', zIndex: 100 }}>
+             <MobileBtn k="U" x={0} y={0} label="Block" />
+             <MobileBtn k="J" x={20} y={90} radius={35} />
+             <MobileBtn k="K" x={110} y={90} radius={35} />
+             <MobileBtn k="L" x={150} y={10} radius={35} />
+          </div>
+        </>
+      )}
 
       {gameOverState && (
         <div style={{

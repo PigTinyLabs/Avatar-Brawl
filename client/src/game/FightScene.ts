@@ -435,39 +435,24 @@ export default class FightScene extends Phaser.Scene {
     const isMobile = !this.sys.game.device.os.desktop;
     if (!isMobile) return;
 
-    const createBtn = (x: number, y: number, label: string, keyName: string, radius: number = 30) => {
-       const bg = this.add.circle(x, y, radius, 0xFFFFFF, 0.15).setInteractive().setScrollFactor(0).setDepth(100);
-       this.add.text(x, y, label, { fontSize: '20px', color: '#FFF' }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
-       
-       bg.on('pointerdown', () => { 
-           this.mobileKeys[keyName as keyof typeof this.mobileKeys] = true; 
-           if (keyName in this.mobileJustPressed) {
-               this.mobileJustPressed[keyName as keyof typeof this.mobileJustPressed] = true;
+    // Listen to custom events from React UI
+    const handleMobileInput = (e: any) => {
+       const { key, state } = e.detail;
+       if (state === 'down') {
+           this.mobileKeys[key as keyof typeof this.mobileKeys] = true;
+           if (key in this.mobileJustPressed) {
+               this.mobileJustPressed[key as keyof typeof this.mobileJustPressed] = true;
            }
-           bg.setFillStyle(0xFFFFFF, 0.4);
-       });
-       const release = () => { 
-           this.mobileKeys[keyName as keyof typeof this.mobileKeys] = false; 
-           bg.setFillStyle(0xFFFFFF, 0.15);
-       };
-       bg.on('pointerup', release);
-       bg.on('pointerout', release);
+       } else if (state === 'up') {
+           this.mobileKeys[key as keyof typeof this.mobileKeys] = false;
+       }
     };
 
-    const w = this.cameras.main.width;
-    const h = this.cameras.main.height;
+    window.addEventListener('mobile_input', handleMobileInput);
 
-    // D-Pad Left
-    createBtn(80, h - 120, 'A', 'A');
-    createBtn(160, h - 120, 'D', 'D');
-    createBtn(120, h - 180, 'W', 'W');
-    createBtn(120, h - 60, 'S', 'S');
-
-    // Action Buttons Right
-    createBtn(w - 180, h - 60, 'J', 'J', 35);
-    createBtn(w - 110, h - 60, 'K', 'K', 35);
-    createBtn(w - 60, h - 120, 'L', 'L', 35);
-    createBtn(w - 200, h - 120, 'U', 'U', 35); // Block
+    this.events.once('shutdown', () => {
+       window.removeEventListener('mobile_input', handleMobileInput);
+    });
   }
 
   pushInput(key: string) {
