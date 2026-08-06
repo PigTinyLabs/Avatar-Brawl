@@ -505,7 +505,7 @@ export default class FightScene extends Phaser.Scene {
             this.cameras.main.startFollow(this.myHead, true, 0.1, 0.1);
             this.minimap.startFollow(this.myHead);
 
-            this.showFloatingMsg(`Đã chuyển sang ${this.myId === 'player1' ? 'Player 1' : 'Dummy'}`, 0x00FF00);
+            this.tutorialInstruction.setText(`Đã chuyển sang ${this.myId === 'player1' ? 'Player 1' : 'Dummy'}`);
         }
 
         if (this.tutorialStep === 1) {
