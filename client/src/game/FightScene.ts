@@ -161,6 +161,13 @@ export default class FightScene extends Phaser.Scene {
     g.fillStyle(0x5C3317, 1); g.fillRect(18, 30, 12, 22); g.fillStyle(0x1a5c0a, 1); g.fillCircle(24, 22, 22); g.generateTexture('tree_tex', 48, 52); g.clear();
     g.fillStyle(0x2d7a1b, 1); g.fillEllipse(20, 14, 36, 24); g.generateTexture('bush_tex', 40, 28); g.clear();
     
+    // Door texture
+    g.fillStyle(0x4a2e15, 1); g.fillRect(0, 0, 80, 80);
+    g.fillStyle(0x000000, 1); g.fillRect(35, 30, 10, 20); // keyhole
+    g.lineStyle(4, 0xffd700, 1); g.strokeRect(0, 0, 80, 80);
+    g.generateTexture('door_tex', 80, 80);
+    g.clear();
+
     g.destroy();
   }
 
@@ -193,6 +200,11 @@ export default class FightScene extends Phaser.Scene {
             this.add.image(cx, cy, 'bush_tex').setDisplaySize(obj.w, obj.h).setDepth(15).setAlpha(0.85); // Bushes overlap players
         }
     });
+
+    // Create the Exit Door at top center
+    this.matter.add.rectangle(MAP_W / 2, 50, 80, 80, { isStatic: true, label: 'exit_door' });
+    this.add.image(MAP_W / 2, 50, 'door_tex').setDepth(4);
+    this.add.text(MAP_W / 2, 8, 'EXIT DOOR', { fontSize: '18px', color: '#ff0' }).setOrigin(0.5).setDepth(4);
 
     const p1Data = this.initialRoomState.players[this.myId];
     const oppId = Object.keys(this.initialRoomState.players).find(id => id !== this.myId) || 'dummy';
@@ -269,6 +281,9 @@ export default class FightScene extends Phaser.Scene {
     bodyGraphics.fillStyle(isMe ? 0x00aaff : 0xffaa00, 1);
     bodyGraphics.fillCircle(0, 0, 22);
     
+    // HP Text
+    const hpText = this.add.text(x, y - 40, '100 HP', { fontSize: '14px', color: '#0f0', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(20);
+
     if (isMe) {
         this.myHead = headImage;
         this.myHead.setDepth(10);
@@ -279,7 +294,7 @@ export default class FightScene extends Phaser.Scene {
         bodyGraphics.setDepth(9);
     }
 
-    return { body, headImage, bodyGraphics, id: playerId };
+    return { body, headImage, bodyGraphics, hpText, hp: 100, hasKey: false, id: playerId };
   }
 
   setupSocketListeners() {
@@ -299,13 +314,42 @@ export default class FightScene extends Phaser.Scene {
 
     this.socket.on('treasure_stolen', (data: any) => {
         if (data.newOwnerId === this.myId) {
-            this.tutorialInstruction.setText('BẠN ĐÃ CƯỚP ĐƯỢC BÁU VẬT!\nGIỮ NÓ TỚI HẾT GIỜ!');
+            this.myPlayer.hasKey = true;
+            if (this.opponentPlayer) this.opponentPlayer.hasKey = false;
+            this.tutorialInstruction.setText(this.phase === 'phase2' ? 'BẠN ĐÃ CƯỚP ĐƯỢC CHÌA KHÓA!\nCHẠY NGAY ĐẾN CỬA (EXIT)!' : 'BẠN ĐÃ CƯỚP ĐƯỢC CHÌA KHÓA!\nGIỮ NÓ TỚI HẾT GIỜ!');
             this.myHead.setTint(0xFFFF00);
             if (this.opponentHead) this.opponentHead.clearTint();
         } else {
-            this.tutorialInstruction.setText('BÁU VẬT BỊ CƯỚP!\nĐẤM NÓ ĐỂ LẤY LẠI!');
+            if (this.opponentPlayer) this.opponentPlayer.hasKey = true;
+            this.myPlayer.hasKey = false;
+            this.tutorialInstruction.setText(this.phase === 'phase2' ? 'CHÌA KHÓA BỊ CƯỚP!\nĐẤM NÓ ĐỂ LẤY LẠI CHÌA KHÓA TRƯỚC KHI NÓ ĐẾN CỬA!' : 'CHÌA KHÓA BỊ CƯỚP!\nĐẤM NÓ ĐỂ LẤY LẠI!');
             this.myHead.clearTint();
             if (this.opponentHead) this.opponentHead.setTint(0xFFFF00);
+        }
+    });
+
+    this.socket.on('key_found', (finderId: string) => {
+        if (finderId === this.myId) {
+            this.myPlayer.hasKey = true;
+            this.myHead.setTint(0xFFFF00);
+            this.tutorialInstruction.setText('BẠN ĐÃ TÌM THẤY CHÌA KHÓA!\nCHẠY NGAY ĐẾN CỬA (EXIT) PHÍA TRÊN CÙNG!');
+        } else {
+            if (this.opponentPlayer) this.opponentPlayer.hasKey = true;
+            if (this.opponentHead) this.opponentHead.setTint(0xFFFF00);
+            this.tutorialInstruction.setText('ĐỐI THỦ ĐÃ TÌM THẤY CHÌA KHÓA!\nĐUỔI THEO VÀ ĐẤM NÓ ĐỂ CƯỚP LẠI TRƯỚC KHI NÓ ĐẾN CỬA!');
+        }
+    });
+
+    this.socket.on('hp_changed', (data: any) => {
+        const p = data.playerId === this.myId ? this.myPlayer : this.opponentPlayer;
+        if (p) {
+            p.hp = data.hp;
+            p.hpText.setText(`${p.hp} HP`);
+            p.hpText.setColor(p.hp > 50 ? '#0f0' : p.hp > 20 ? '#ff0' : '#f00');
+            
+            // Show damage text
+            const fx = this.add.text(p.body.position.x, p.body.position.y - 20, '-HP', { fontSize: '20px', color: '#f00', stroke: '#fff', strokeThickness: 2 }).setDepth(30);
+            this.tweens.add({ targets: fx, y: p.body.position.y - 60, alpha: 0, duration: 1000, onComplete: () => fx.destroy() });
         }
     });
 
@@ -392,18 +436,40 @@ export default class FightScene extends Phaser.Scene {
                       setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
                   }
                   if (trapData.type === 'real_treasure' && this.phase === 'phase2') {
-                      this.phase = 'phase3';
-                      this.phaseText.setText('PHASE 3: HỦY DIỆT');
+                      this.myPlayer.hasKey = true;
+                      this.myHead.setTint(0xFFFF00);
+                      this.tutorialInstruction.setText('BẠN ĐÃ TÌM THẤY CHÌA KHÓA!\nCHẠY NGAY ĐẾN CỬA (EXIT) PHÍA TRÊN CÙNG BẢN ĐỒ!');
                   }
+              }
+          }
+      } else if (body.label === 'exit_door') {
+          if (this.phase === 'phase2' && this.myPlayer.hasKey) {
+              if (!this.isTraining) {
+                  this.socket.emit('open_door');
+              } else {
+                  this.phase = 'phase3';
+                  this.phaseText.setText('PHASE 3: HỦY DIỆT');
+                  this.tutorialInstruction.setText('BẠN ĐÃ MỞ CỬA!\nBÂY GIỜ LÀ PHASE 3: BẢO VỆ CHÌA KHÓA 30 GIÂY!');
+                  this.phaseEndTime = this.time.now + 30000;
               }
           }
       }
   }
 
   checkAttackCollision(body: any) {
-      if (this.phase === 'phase3' && (body.label === 'opp_player')) {
+      if ((this.phase === 'phase3' || this.phase === 'phase2') && (body.label === 'opp_player')) {
           if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
               if (!this.isTraining) this.socket.emit('attack_hit', { targetId: this.opponentPlayer.id });
+              else {
+                  // Training mode steal
+                  if (this.opponentPlayer.hasKey) {
+                      this.opponentPlayer.hasKey = false;
+                      this.myPlayer.hasKey = true;
+                      this.myHead.setTint(0xFFFF00);
+                      this.opponentHead.clearTint();
+                      this.tutorialInstruction.setText('BẠN ĐÃ CƯỚP LẠI CHÌA KHÓA!');
+                  }
+              }
               this.matter.body.applyForce(this.opponentPlayer.body, this.opponentPlayer.body.position, { 
                   x: (this.myPlayer.body.position.x < this.opponentPlayer.body.position.x ? 0.05 : -0.05), 
                   y: (this.myPlayer.body.position.y < this.opponentPlayer.body.position.y ? 0.05 : -0.05) 
@@ -417,10 +483,12 @@ export default class FightScene extends Phaser.Scene {
 
     this.myHead.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
     this.myPlayer.bodyGraphics.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
+    this.myPlayer.hpText.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 45);
 
     if (this.opponentPlayer) {
         this.opponentHead.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
         this.opponentPlayer.bodyGraphics.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
+        this.opponentPlayer.hpText.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 45);
     }
 
     if (!this.isTraining && (this.phase === 'phase1' || this.phase === 'phase2')) {
@@ -526,20 +594,16 @@ export default class FightScene extends Phaser.Scene {
         } else if (this.tutorialStep === 3 && this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
                 this.placeTrapLocal('real_treasure', this.myPlayer.body.position.x, this.myPlayer.body.position.y);
-                this.tutorialInstruction.setText('Báu vật đã được đặt! Dò mìn bắt đầu sau 2 giây...');
+                this.tutorialInstruction.setText('Chìa khóa đã được giấu! Dò mìn bắt đầu sau 2 giây...');
                 this.tutorialStep = 4;
                 setTimeout(() => {
                     this.phase = 'phase2';
                     this.phaseText.setText('PHASE 2: DÒ MÌN');
-                    this.tutorialStep = 5;
-                    this.tutorialInstruction.setText('Mọi bẫy đều Tàng Hình!\nHãy thử đi lại và tự dẫm vào Vỏ Chuối của bạn xem :)');
+                    this.phaseEndTime = this.time.now + 60000;
+                    this.tutorialInstruction.setText('Tuyệt! Bây giờ Chìa Khóa đã TÀNG HÌNH.\nHãy dùng Radar tìm nó, sau đó chạy lên CỬA (EXIT)!');
                 }, 2000);
             }
-        } else if (this.tutorialStep === 6) {
-            this.phase = 'phase3';
-            this.phaseText.setText('PHASE 3: HỦY DIỆT');
-            this.tutorialInstruction.setText('HAHA! Bị trượt vỏ chuối rồi!\nGiờ hãy chạy tới Dummy và bấm J để ĐẤM!');
-        }
+
     } else {
         if (this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
