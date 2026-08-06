@@ -124,6 +124,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Client throws banana in phase 3
+  socket.on('throw_banana', (data) => {
+    const roomId = socket.roomId;
+    if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase3') {
+       io.to(roomId).emit('banana_thrown', { ...data, ownerId: socket.id });
+    }
+  });
+
   // Client triggers a trap
   socket.on('trigger_trap', (trapId) => {
     const roomId = socket.roomId;
@@ -134,30 +142,59 @@ io.on('connection', (socket) => {
         rooms[roomId].traps.splice(trapIndex, 1);
         io.to(roomId).emit('trap_triggered', { trapId, victimId: socket.id, trapType: trap.type });
         
+        let damage = 0;
+        if (trap.type === 'banana') damage = 15;
+        if (trap.type === 'fake_treasure') damage = 30;
+
+        if (damage > 0) {
+           rooms[roomId].players[socket.id].hp -= damage;
+           io.to(roomId).emit('hp_changed', { playerId: socket.id, hp: rooms[roomId].players[socket.id].hp });
+           
+           if (rooms[roomId].players[socket.id].hp <= 0) {
+               // Victim died
+               const winner = Object.keys(rooms[roomId].players).find(id => id !== socket.id);
+               io.to(roomId).emit('game_over', { winner });
+               if (rooms[roomId].timer) clearTimeout(rooms[roomId].timer);
+               delete rooms[roomId];
+               return; // End early
+           }
+        }
+
         if (trap.type === 'fake_treasure') {
            rooms[roomId].players[socket.id].isBurned = true;
            io.to(roomId).emit('player_burned', socket.id);
         } else if (trap.type === 'real_treasure' && rooms[roomId].phase === 'phase2') {
-           startPhase3(roomId, socket.id);
+           // Finder got the key
+           rooms[roomId].players[socket.id].hasTreasure = true;
+           io.to(roomId).emit('key_found', socket.id);
         }
       }
     }
   });
 
-  // Attack logic (Phase 3)
+  // Attack logic (Phase 2 & Phase 3)
   socket.on('attack_hit', (data) => {
      const roomId = socket.roomId;
-     if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase3') {
+     if (roomId && rooms[roomId] && (rooms[roomId].phase === 'phase3' || rooms[roomId].phase === 'phase2')) {
         const victimId = data.targetId;
         if (rooms[roomId].players[victimId].hasTreasure) {
-           // Drop treasure!
+           // Drop treasure/key!
            rooms[roomId].players[victimId].hasTreasure = false;
-           // Give to attacker for simplicity, or drop it on ground. Let's give it to attacker.
+           // Give to attacker
            rooms[roomId].players[socket.id].hasTreasure = true;
-           
            io.to(roomId).emit('treasure_stolen', { newOwnerId: socket.id, victimId });
         }
      }
+  });
+
+  // Client opens the door with the key
+  socket.on('open_door', () => {
+    const roomId = socket.roomId;
+    if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase2') {
+        if (rooms[roomId].players[socket.id].hasTreasure) {
+            startPhase3(roomId, socket.id);
+        }
+    }
   });
 
   socket.on('disconnect', () => {

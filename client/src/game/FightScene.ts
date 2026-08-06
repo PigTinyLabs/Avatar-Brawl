@@ -109,6 +109,9 @@ export default class FightScene extends Phaser.Scene {
   private tutorialInstruction!: Phaser.GameObjects.Text;
   private minimap!: Phaser.Cameras.Scene2D.Camera;
   private radarText!: Phaser.GameObjects.Text;
+  private radarArrow!: Phaser.GameObjects.Image;
+  private lastRadarTime: number = 0;
+  private lastBananaThrow: number = 0;
 
   constructor() {
     super({ key: 'FightScene' });
@@ -138,6 +141,29 @@ export default class FightScene extends Phaser.Scene {
     g.lineStyle(2, 0x000000);
     g.beginPath(); g.arc(20, 25, 10, 0, Math.PI, false); g.strokePath();
     g.generateTexture('face_placeholder', 40, 40);
+    g.clear();
+
+    // Circle mask for avatars
+    g.fillStyle(0xFFFFFF, 1);
+    g.fillCircle(20, 20, 20);
+    g.generateTexture('circle_mask', 40, 40);
+    g.clear();
+
+    // Radar Arrow
+    g.fillStyle(0x00FF00, 1);
+    g.lineStyle(2, 0x000000, 1);
+    g.beginPath();
+    g.moveTo(0, 10);
+    g.lineTo(20, 10);
+    g.lineTo(20, 0);
+    g.lineTo(40, 15);
+    g.lineTo(20, 30);
+    g.lineTo(20, 20);
+    g.lineTo(0, 20);
+    g.closePath();
+    g.fillPath();
+    g.strokePath();
+    g.generateTexture('radar_arrow', 45, 35);
     g.clear();
 
     // Banana
@@ -241,6 +267,7 @@ export default class FightScene extends Phaser.Scene {
     this.timerText = this.add.text(this.scale.width / 2, 80, '', { fontSize: '24px', color: '#ff0', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
     this.radarText = this.add.text(this.scale.width / 2, 120, '', { fontSize: '22px', color: '#0ff', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
     this.tutorialInstruction = this.add.text(this.scale.width / 2, this.scale.height - 80, '', { fontSize: '20px', color: '#0f0', align: 'center', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
+    this.radarArrow = this.add.image(0, 0, 'radar_arrow').setOrigin(0, 0.5).setVisible(false).setDepth(25);
 
     this.add.text(10, this.scale.height - 30, this.isTraining ? 'WASD: di chuyển | J: Chuối | K: Báu vật | Q: Đổi nhân vật' : 'WASD di chuyển | J đặt chuối | K giấu kho báu', { fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 2 }).setScrollFactor(0).setDepth(20);
 
@@ -253,6 +280,8 @@ export default class FightScene extends Phaser.Scene {
             console.log("COLLISION START", bodyA.label, bodyB.label);
             if (bodyA.label === 'my_player') { this.checkTrapCollision(bodyB); this.checkAttackCollision(bodyB); } 
             else if (bodyB.label === 'my_player') { this.checkTrapCollision(bodyA); this.checkAttackCollision(bodyA); }
+            
+            this.checkThrownBananaCollision(bodyA, bodyB);
         });
     });
 
@@ -277,6 +306,12 @@ export default class FightScene extends Phaser.Scene {
     const headImage = this.add.image(x, y, headKey);
     headImage.setDisplaySize(40, 40);
     
+    const maskShape = this.add.graphics({ x, y });
+    maskShape.fillCircle(0, 0, 20);
+    maskShape.setVisible(false);
+    const mask = maskShape.createGeometryMask();
+    headImage.setMask(mask);
+    
     const bodyGraphics = this.add.graphics();
     bodyGraphics.fillStyle(isMe ? 0x00aaff : 0xffaa00, 1);
     bodyGraphics.fillCircle(0, 0, 22);
@@ -294,7 +329,7 @@ export default class FightScene extends Phaser.Scene {
         bodyGraphics.setDepth(9);
     }
 
-    return { body, headImage, bodyGraphics, hpText, hp: 100, hasKey: false, id: playerId };
+    return { body, headImage, maskShape, bodyGraphics, hpText, hp: 100, hasKey: false, id: playerId };
   }
 
   setupSocketListeners() {
@@ -404,6 +439,56 @@ export default class FightScene extends Phaser.Scene {
            this.onGameOver(data.winner);
        }
     });
+
+    this.socket.on('banana_thrown', (data: any) => {
+        this.spawnThrownBanana(data.x, data.y, data.vx, data.vy, data.ownerId);
+    });
+  }
+
+  spawnThrownBanana(x: number, y: number, vx: number, vy: number, ownerId: string) {
+      const sprite = this.matter.add.image(x, y, 'trap_banana', null, { 
+          frictionAir: 0.05,
+          label: `thrown_banana_${ownerId}`,
+          isSensor: true
+      });
+      sprite.setDepth(15);
+      
+      this.matter.body.setVelocity(sprite.body as any, { x: vx, y: vy });
+      sprite.setAngularVelocity(0.3);
+      
+      this.time.delayedCall(3000, () => {
+          if (sprite && sprite.active) sprite.destroy();
+      });
+  }
+
+  checkThrownBananaCollision(bodyA: any, bodyB: any) {
+      const isBananaA = bodyA.label && bodyA.label.startsWith('thrown_banana_');
+      const isBananaB = bodyB.label && bodyB.label.startsWith('thrown_banana_');
+      
+      if (!isBananaA && !isBananaB) return;
+      
+      const bananaBody = isBananaA ? bodyA : bodyB;
+      const otherBody = isBananaA ? bodyB : bodyA;
+      
+      if (otherBody.label === 'my_player' || otherBody.label === 'opp_player') {
+          const ownerId = bananaBody.label.replace('thrown_banana_', '');
+          const victimIsMe = otherBody.label === 'my_player';
+          
+          if (victimIsMe && ownerId !== this.myId) {
+              this.isBurned = true;
+              this.isStunned = true;
+              this.matter.body.setVelocity(this.myPlayer.body, { x: (Math.random()-0.5)*30, y: (Math.random()-0.5)*30 });
+              this.myHead.setTint(0x333333);
+              setTimeout(() => { this.isStunned = false; }, 800);
+              setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
+              
+              if (bananaBody.gameObject) bananaBody.gameObject.destroy();
+          } else if (!victimIsMe && ownerId === this.myId) {
+              if (bananaBody.gameObject) bananaBody.gameObject.destroy();
+          }
+      } else if (otherBody.label === 'obstacle') {
+          if (bananaBody.gameObject) bananaBody.gameObject.destroy();
+      }
   }
 
   placeTrapLocal(type: string, x: number, y: number, id?: string, ownerId?: string) {
@@ -412,6 +497,17 @@ export default class FightScene extends Phaser.Scene {
       const sprite = this.matter.add.image(x, y, tex, null, { isStatic: true, isSensor: true, label: `trap_${newId}` });
       sprite.setDepth(7);
       sprite.setData('trapData', { id: newId, type, ownerId: ownerId || this.myId });
+      
+      // Add a small delay before the owner can trigger their own trap
+      if ((ownerId || this.myId) === this.myId) {
+          sprite.setData('justPlaced', true);
+          this.time.delayedCall(1000, () => {
+              if (sprite && sprite.active) {
+                  sprite.setData('justPlaced', false);
+              }
+          });
+      }
+
       this.traps.push(sprite);
       return sprite;
   }
@@ -422,6 +518,12 @@ export default class FightScene extends Phaser.Scene {
           const sprite = this.traps.find(t => t.getData('trapData').id === trapId);
           if (sprite) {
               const trapData = sprite.getData('trapData');
+              
+              // Prevent triggering your own trap immediately after placing it
+              if (trapData.ownerId === this.myId && sprite.getData('justPlaced')) {
+                  return;
+              }
+
               if (!this.isTraining) {
                   this.socket.emit('trigger_trap', trapId);
               } else {
@@ -482,11 +584,13 @@ export default class FightScene extends Phaser.Scene {
     if (!this.myPlayer || !this.myHead || !this.opponentHead) return;
 
     this.myHead.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
+    if (this.myPlayer.maskShape) this.myPlayer.maskShape.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
     this.myPlayer.bodyGraphics.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
     this.myPlayer.hpText.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 45);
 
     if (this.opponentPlayer) {
         this.opponentHead.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
+        if (this.opponentPlayer.maskShape) this.opponentPlayer.maskShape.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
         this.opponentPlayer.bodyGraphics.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
         this.opponentPlayer.hpText.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 45);
     }
@@ -538,17 +642,46 @@ export default class FightScene extends Phaser.Scene {
     if (this.opponentPlayer) this.matter.body.setAngle(this.opponentPlayer.body, 0);
 
     // Radar Logic for Phase 2
-    if (this.phase === 'phase2') {
+    if (this.phase === 'phase2' && !this.myPlayer.hasKey) {
         let realTreasure = this.traps.find(t => t.getData('trapData').type === 'real_treasure');
         if (realTreasure) {
-            const dist = Phaser.Math.Distance.Between(
-                this.myPlayer.body.position.x, this.myPlayer.body.position.y,
-                realTreasure.x, realTreasure.y
-            );
-            if (dist < 150) this.radarText.setText('RADAR: Rất nóng! (Cực gần)');
-            else if (dist < 400) this.radarText.setText('RADAR: Nóng (Gần)');
-            else if (dist < 800) this.radarText.setText('RADAR: Ấm (Hơi xa)');
-            else this.radarText.setText('RADAR: Lạnh ngắt (Rất xa)');
+            if (time > this.lastRadarTime + 5000) {
+                this.lastRadarTime = time;
+                
+                const angle = Phaser.Math.Angle.Between(
+                    this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                    realTreasure.x, realTreasure.y
+                );
+                
+                this.radarArrow.setPosition(
+                    this.myPlayer.body.position.x + Math.cos(angle) * 30, 
+                    this.myPlayer.body.position.y + Math.sin(angle) * 30
+                );
+                this.radarArrow.setRotation(angle);
+                this.radarArrow.setVisible(true);
+                this.radarArrow.setAlpha(1);
+                
+                this.tweens.add({
+                    targets: this.radarArrow,
+                    x: this.myPlayer.body.position.x + Math.cos(angle) * 80,
+                    y: this.myPlayer.body.position.y + Math.sin(angle) * 80,
+                    alpha: 0,
+                    duration: 1500,
+                    ease: 'Power2'
+                });
+                
+                const dist = Phaser.Math.Distance.Between(
+                    this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                    realTreasure.x, realTreasure.y
+                );
+                if (dist < 150) this.radarText.setText('RADAR: Rất nóng! (Cực gần)');
+                else if (dist < 400) this.radarText.setText('RADAR: Nóng (Gần)');
+                else if (dist < 800) this.radarText.setText('RADAR: Ấm (Hơi xa)');
+                else this.radarText.setText('RADAR: Lạnh ngắt (Rất xa)');
+            } else {
+                const remaining = Math.ceil((this.lastRadarTime + 5000 - time) / 1000);
+                this.radarText.setText(`RADAR: Quét lại sau ${remaining}s...`);
+            }
         } else {
             this.radarText.setText('RADAR: Đang dò tín hiệu...');
         }
@@ -603,6 +736,20 @@ export default class FightScene extends Phaser.Scene {
                     this.tutorialInstruction.setText('Tuyệt! Bây giờ Chìa Khóa đã TÀNG HÌNH.\nHãy dùng Radar tìm nó, sau đó chạy lên CỬA (EXIT)!');
                 }, 2000);
             }
+        } else if (this.phase === 'phase3') {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+                if (time > this.lastBananaThrow + 2000) {
+                    this.lastBananaThrow = time;
+                    let targetX = this.opponentPlayer ? this.opponentPlayer.body.position.x : this.myPlayer.body.position.x + 10;
+                    let targetY = this.opponentPlayer ? this.opponentPlayer.body.position.y : this.myPlayer.body.position.y;
+                    const angle = Phaser.Math.Angle.Between(
+                        this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                        targetX, targetY
+                    );
+                    const speed = 18;
+                    this.spawnThrownBanana(this.myPlayer.body.position.x, this.myPlayer.body.position.y, Math.cos(angle) * speed, Math.sin(angle) * speed, this.myId);
+                }
+            }
         }
     } else {
         if (this.phase === 'phase1') {
@@ -612,6 +759,25 @@ export default class FightScene extends Phaser.Scene {
             if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
                 const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
                 this.socket.emit('place_trap', { type: type, x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y });
+            }
+        } else if (this.phase === 'phase3') {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
+                if (time > this.lastBananaThrow + 2000) {
+                    this.lastBananaThrow = time;
+                    let targetX = this.opponentPlayer ? this.opponentPlayer.body.position.x : this.myPlayer.body.position.x + 10;
+                    let targetY = this.opponentPlayer ? this.opponentPlayer.body.position.y : this.myPlayer.body.position.y;
+                    const angle = Phaser.Math.Angle.Between(
+                        this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                        targetX, targetY
+                    );
+                    const speed = 18;
+                    this.socket.emit('throw_banana', {
+                        x: this.myPlayer.body.position.x,
+                        y: this.myPlayer.body.position.y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed
+                    });
+                }
             }
         }
     }
