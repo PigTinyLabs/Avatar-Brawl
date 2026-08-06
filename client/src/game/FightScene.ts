@@ -102,11 +102,13 @@ export default class FightScene extends Phaser.Scene {
   private phase: string = 'wait';
   private phaseEndTime: number = 0;
   private isBurned = false;
+  private isStunned = false;
 
   private isTraining: boolean = false;
   private tutorialStep: number = 0;
   private tutorialInstruction!: Phaser.GameObjects.Text;
   private minimap!: Phaser.Cameras.Scene2D.Camera;
+  private radarText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'FightScene' });
@@ -224,6 +226,7 @@ export default class FightScene extends Phaser.Scene {
 
     this.phaseText = this.add.text(this.scale.width / 2, 40, this.isTraining ? 'TRAINING' : 'WAITING FOR PLAYERS', { fontSize: '28px', color: '#fff', stroke: '#000', strokeThickness: 4 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
     this.timerText = this.add.text(this.scale.width / 2, 80, '', { fontSize: '24px', color: '#ff0', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
+    this.radarText = this.add.text(this.scale.width / 2, 120, '', { fontSize: '22px', color: '#0ff', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
     this.tutorialInstruction = this.add.text(this.scale.width / 2, this.scale.height - 80, '', { fontSize: '20px', color: '#0f0', align: 'center', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
 
     this.add.text(10, this.scale.height - 30, 'WASD di chuyển | J đặt chuối | K giấu kho báu', { fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 2 }).setScrollFactor(0).setDepth(20);
@@ -340,7 +343,10 @@ export default class FightScene extends Phaser.Scene {
         }
         if (victimId === this.myId) {
             this.isBurned = true;
+            this.isStunned = true;
+            this.matter.body.setVelocity(this.myPlayer.body, { x: (Math.random()-0.5)*30, y: (Math.random()-0.5)*30 });
             this.myHead.setTint(0x333333);
+            setTimeout(() => { this.isStunned = false; }, 800);
             setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
         } else if (victimId === this.opponentPlayer?.id) {
             this.opponentHead.setTint(0x333333);
@@ -378,7 +384,10 @@ export default class FightScene extends Phaser.Scene {
                   this.traps = this.traps.filter(t => t !== sprite);
                   if (trapData.type === 'banana') {
                       this.isBurned = true;
+                      this.isStunned = true;
+                      this.matter.body.setVelocity(this.myPlayer.body, { x: (Math.random()-0.5)*30, y: (Math.random()-0.5)*30 });
                       this.myHead.setTint(0x333333);
+                      setTimeout(() => { this.isStunned = false; }, 800);
                       setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
                   }
                   if (trapData.type === 'real_treasure' && this.phase === 'phase2') {
@@ -452,10 +461,31 @@ export default class FightScene extends Phaser.Scene {
         vy *= 0.707;
     }
 
-    this.matter.body.setVelocity(this.myPlayer.body, { x: vx, y: vy });
+    if (!this.isStunned) {
+        this.matter.body.setVelocity(this.myPlayer.body, { x: vx, y: vy });
+    }
 
     this.matter.body.setAngle(this.myPlayer.body, 0);
     if (this.opponentPlayer) this.matter.body.setAngle(this.opponentPlayer.body, 0);
+
+    // Radar Logic for Phase 2
+    if (this.phase === 'phase2') {
+        let realTreasure = this.traps.find(t => t.getData('trapData').type === 'real_treasure');
+        if (realTreasure) {
+            const dist = Phaser.Math.Distance.Between(
+                this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                realTreasure.x, realTreasure.y
+            );
+            if (dist < 150) this.radarText.setText('RADAR: Rất nóng! (Cực gần)');
+            else if (dist < 400) this.radarText.setText('RADAR: Nóng (Gần)');
+            else if (dist < 800) this.radarText.setText('RADAR: Ấm (Hơi xa)');
+            else this.radarText.setText('RADAR: Lạnh ngắt (Rất xa)');
+        } else {
+            this.radarText.setText('RADAR: Đang dò tín hiệu...');
+        }
+    } else {
+        this.radarText.setText('');
+    }
 
     if (this.isTraining) {
         if (this.tutorialStep === 1) {
