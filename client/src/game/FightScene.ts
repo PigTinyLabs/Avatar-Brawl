@@ -220,7 +220,8 @@ export default class FightScene extends Phaser.Scene {
             D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
             SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
             J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
-            K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K)
+            K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
+            Q: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
         };
     }
 
@@ -229,7 +230,7 @@ export default class FightScene extends Phaser.Scene {
     this.radarText = this.add.text(this.scale.width / 2, 120, '', { fontSize: '22px', color: '#0ff', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
     this.tutorialInstruction = this.add.text(this.scale.width / 2, this.scale.height - 80, '', { fontSize: '20px', color: '#0f0', align: 'center', stroke: '#000', strokeThickness: 3 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
 
-    this.add.text(10, this.scale.height - 30, 'WASD di chuyển | J đặt chuối | K giấu kho báu', { fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 2 }).setScrollFactor(0).setDepth(20);
+    this.add.text(10, this.scale.height - 30, this.isTraining ? 'WASD: di chuyển | J: Chuối | K: Báu vật | Q: Đổi nhân vật' : 'WASD di chuyển | J đặt chuối | K giấu kho báu', { fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 2 }).setScrollFactor(0).setDepth(20);
 
     this.setupSocketListeners();
 
@@ -488,6 +489,25 @@ export default class FightScene extends Phaser.Scene {
     }
 
     if (this.isTraining) {
+        if (Phaser.Input.Keyboard.JustDown(this.keys.Q)) {
+            // Swap control
+            const tempPlayer = this.myPlayer;
+            this.myPlayer = this.opponentPlayer;
+            this.opponentPlayer = tempPlayer;
+
+            const tempHead = this.myHead;
+            this.myHead = this.opponentHead;
+            this.opponentHead = tempHead;
+
+            this.myId = this.myPlayer.id;
+
+            // Camera snap
+            this.cameras.main.startFollow(this.myHead, true, 0.1, 0.1);
+            this.minimap.startFollow(this.myHead);
+
+            this.showFloatingMsg(`Đã chuyển sang ${this.myId === 'player1' ? 'Player 1' : 'Dummy'}`, 0x00FF00);
+        }
+
         if (this.tutorialStep === 1) {
             if (this.keys.A.isDown || this.keys.D.isDown || this.keys.W.isDown || this.keys.S.isDown) {
                 this.tutorialStep = 2;
