@@ -363,11 +363,11 @@ export default class FightScene extends Phaser.Scene {
   }
 
   placeTrapLocal(type: string, x: number, y: number, id?: string, ownerId?: string) {
+      const newId = id || Math.random().toString();
       const tex = type === 'banana' ? 'trap_banana' : type === 'fake_treasure' ? 'trap_fake' : 'trap_real';
-      // Pass null for frame instead of undefined to ensure options are parsed correctly
-      const sprite = this.matter.add.image(x, y, tex, null, { isStatic: true, isSensor: true, label: `trap_${id || Math.random()}` });
+      const sprite = this.matter.add.image(x, y, tex, null, { isStatic: true, isSensor: true, label: `trap_${newId}` });
       sprite.setDepth(7);
-      sprite.setData('trapData', { id: id || sprite.name, type, ownerId: ownerId || this.myId });
+      sprite.setData('trapData', { id: newId, type, ownerId: ownerId || this.myId });
       this.traps.push(sprite);
       return sprite;
   }
@@ -423,7 +423,7 @@ export default class FightScene extends Phaser.Scene {
         this.opponentPlayer.bodyGraphics.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
     }
 
-    if (this.phase === 'phase1' || this.phase === 'phase2') {
+    if (!this.isTraining && (this.phase === 'phase1' || this.phase === 'phase2')) {
        this.opponentHead.setVisible(false);
        this.opponentPlayer.bodyGraphics.setVisible(false);
     } else {
@@ -521,14 +521,13 @@ export default class FightScene extends Phaser.Scene {
             if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
                 this.placeTrapLocal('banana', this.myPlayer.body.position.x, this.myPlayer.body.position.y);
                 this.tutorialStep = 3;
-                this.tutorialInstruction.setText('Chuối sẽ làm kẻ thù trượt ngã!\nBây giờ bấm K để đặt Báu Vật (Thật hoặc Giả).');
+                this.tutorialInstruction.setText('Chuối sẽ làm kẻ thù trượt ngã!\nBây giờ bấm K để đặt Báu Vật.');
             }
-        } else if (this.tutorialStep === 3) {
+        } else if (this.tutorialStep === 3 && this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.K)) {
-                const type = Math.random() > 0.5 ? 'real_treasure' : 'fake_treasure';
-                this.placeTrapLocal(type, this.myPlayer.body.position.x, this.myPlayer.body.position.y);
+                this.placeTrapLocal('real_treasure', this.myPlayer.body.position.x, this.myPlayer.body.position.y);
+                this.tutorialInstruction.setText('Báu vật đã được đặt! Dò mìn bắt đầu sau 2 giây...');
                 this.tutorialStep = 4;
-                this.tutorialInstruction.setText('Quá đã! Giờ chúng ta sẽ chuyển sang Phase 2...');
                 setTimeout(() => {
                     this.phase = 'phase2';
                     this.phaseText.setText('PHASE 2: DÒ MÌN');
