@@ -234,6 +234,7 @@ export default class FightScene extends Phaser.Scene {
         event.pairs.forEach((pair: any) => {
             const bodyA = pair.bodyA;
             const bodyB = pair.bodyB;
+            console.log("COLLISION START", bodyA.label, bodyB.label);
             if (bodyA.label === 'my_player') { this.checkTrapCollision(bodyB); this.checkAttackCollision(bodyB); } 
             else if (bodyB.label === 'my_player') { this.checkTrapCollision(bodyA); this.checkAttackCollision(bodyA); }
         });
@@ -326,9 +327,8 @@ export default class FightScene extends Phaser.Scene {
     });
 
     this.socket.on('trap_placed', (trap: any) => {
-        if (trap.ownerId !== this.myId) {
-            this.placeTrapLocal(trap.type, trap.x, trap.y, trap.id, trap.ownerId);
-        }
+        // ALWAYS create the trap locally, even if it's ours, so we can see it
+        this.placeTrapLocal(trap.type, trap.x, trap.y, trap.id, trap.ownerId);
     });
 
     this.socket.on('trap_triggered', (data: any) => {
@@ -357,7 +357,8 @@ export default class FightScene extends Phaser.Scene {
 
   placeTrapLocal(type: string, x: number, y: number, id?: string, ownerId?: string) {
       const tex = type === 'banana' ? 'trap_banana' : type === 'fake_treasure' ? 'trap_fake' : 'trap_real';
-      const sprite = this.matter.add.image(x, y, tex, undefined, { isStatic: true, isSensor: true, label: `trap_${id || Math.random()}` });
+      // Pass null for frame instead of undefined to ensure options are parsed correctly
+      const sprite = this.matter.add.image(x, y, tex, null, { isStatic: true, isSensor: true, label: `trap_${id || Math.random()}` });
       sprite.setDepth(7);
       sprite.setData('trapData', { id: id || sprite.name, type, ownerId: ownerId || this.myId });
       this.traps.push(sprite);
@@ -366,25 +367,24 @@ export default class FightScene extends Phaser.Scene {
 
   checkTrapCollision(body: any) {
       if (body.label.startsWith('trap_')) {
-          const trapId = body.label.split('_')[1];
+          const trapId = body.label.replace('trap_', '');
           const sprite = this.traps.find(t => t.getData('trapData').id === trapId);
           if (sprite) {
               const trapData = sprite.getData('trapData');
-              if (trapData.ownerId !== this.myId || this.phase === 'phase2') { 
-                 if (!this.isTraining) this.socket.emit('trigger_trap', trapId);
-                 else {
-                     sprite.destroy();
-                     this.traps = this.traps.filter(t => t !== sprite);
-                     if (trapData.type === 'banana') {
-                         this.isBurned = true;
-                         this.myHead.setTint(0x333333);
-                         setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
-                     }
-                     if (trapData.type === 'real_treasure' && this.phase === 'phase2') {
-                         this.phase = 'phase3';
-                         this.phaseText.setText('PHASE 3: HỦY DIỆT');
-                     }
-                 }
+              if (!this.isTraining) {
+                  this.socket.emit('trigger_trap', trapId);
+              } else {
+                  sprite.destroy();
+                  this.traps = this.traps.filter(t => t !== sprite);
+                  if (trapData.type === 'banana') {
+                      this.isBurned = true;
+                      this.myHead.setTint(0x333333);
+                      setTimeout(() => { this.isBurned = false; this.myHead.clearTint(); }, 3000);
+                  }
+                  if (trapData.type === 'real_treasure' && this.phase === 'phase2') {
+                      this.phase = 'phase3';
+                      this.phaseText.setText('PHASE 3: HỦY DIỆT');
+                  }
               }
           }
       }
