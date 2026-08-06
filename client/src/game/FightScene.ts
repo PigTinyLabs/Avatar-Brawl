@@ -603,7 +603,7 @@ export default class FightScene extends Phaser.Scene {
                     this.tutorialInstruction.setText('Tuyệt! Bây giờ Chìa Khóa đã TÀNG HÌNH.\nHãy dùng Radar tìm nó, sau đó chạy lên CỬA (EXIT)!');
                 }, 2000);
             }
-
+        }
     } else {
         if (this.phase === 'phase1') {
             if (Phaser.Input.Keyboard.JustDown(this.keys.J)) {
