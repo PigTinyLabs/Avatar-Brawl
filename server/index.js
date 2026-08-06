@@ -65,6 +65,46 @@ io.on('connection', (socket) => {
     }
   });
 
+  let privateRooms = {};
+
+  socket.on('create_private', (playerData) => {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    privateRooms[code] = {
+       id: code,
+       host: { id: socket.id, socket: socket, data: playerData }
+    };
+    socket.emit('private_created', { code });
+  });
+
+  socket.on('join_private', (data) => {
+    const code = data.code.toUpperCase();
+    if (privateRooms[code]) {
+       const host = privateRooms[code].host;
+       const guest = { id: socket.id, socket: socket, data: data.playerData };
+       
+       const roomId = `room_${roomCounter++}`;
+       rooms[roomId] = {
+         id: roomId, phase: 'wait', timer: null,
+         players: {
+           [host.id]: { ...host.data, id: host.id, x: 200, y: 400, isLeft: true, hp: 100, isBurned: false, hasTreasure: false },
+           [guest.id]: { ...guest.data, id: guest.id, x: 600, y: 400, isLeft: false, hp: 100, isBurned: false, hasTreasure: false }
+         },
+         traps: []
+       };
+
+       host.socket.join(roomId);
+       guest.socket.join(roomId);
+       host.socket.roomId = roomId;
+       guest.socket.roomId = roomId;
+
+       io.to(roomId).emit('match_found', { roomId: roomId, players: rooms[roomId].players });
+       delete privateRooms[code];
+       startPhase1(roomId);
+    } else {
+       socket.emit('join_error', { message: 'Room not found' });
+    }
+  });
+
   // Client syncs their physics state
   socket.on('sync_state', (data) => {
     const roomId = socket.roomId;

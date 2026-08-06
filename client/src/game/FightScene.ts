@@ -133,12 +133,43 @@ export default class FightScene extends Phaser.Scene {
     this.tutorialInstruction = this.add.text(400, 150, '', { fontSize: '18px', color: '#0f0', align: 'center' }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
 
     // Socket Events
-    this.socket.on('phase_change', (data: any) => {
+    this.socket.on('phase_changed', (data: any) => {
         this.phase = data.phase;
-        this.phaseEndTime = data.endTime;
+        if (data.timeLimit) {
+            this.phaseEndTime = this.time.now + data.timeLimit;
+        } else {
+            this.phaseEndTime = 0;
+        }
         if (this.phase === 'phase1') this.phaseText.setText('PHASE 1: CHƠI DƠ');
         if (this.phase === 'phase2') this.phaseText.setText('PHASE 2: DÒ MÌN');
         if (this.phase === 'phase3') this.phaseText.setText('PHASE 3: HỦY DIỆT');
+    });
+
+    this.socket.on('treasure_stolen', (data: any) => {
+        if (data.newOwnerId === this.myId) {
+            this.tutorialInstruction.setText('BẠN ĐÃ CƯỚP ĐƯỢC BÁU VẬT!\nGIỮ NÓ TỚI HẾT GIỜ!');
+            this.myHead.setTint(0xFFFF00);
+            if (this.opponentHead) this.opponentHead.clearTint();
+        } else {
+            this.tutorialInstruction.setText('BÁU VẬT BỊ CƯỚP!\nĐẤM NÓ ĐỂ LẤY LẠI!');
+            this.myHead.clearTint();
+            if (this.opponentHead) this.opponentHead.setTint(0xFFFF00);
+        }
+    });
+
+    this.socket.on('player_burned', (playerId: string) => {
+        if (playerId === this.myId) {
+            this.isBurned = true;
+            this.myHead.setTint(0x333333);
+        } else if (this.opponentHead) {
+            this.opponentHead.setTint(0x333333);
+        }
+    });
+
+    this.socket.on('opponent_disconnected', () => {
+        if (this.onGameOver) {
+            this.onGameOver(this.myId); // Win by disconnect
+        }
     });
 
     this.socket.on('opponent_sync', (data: any) => {

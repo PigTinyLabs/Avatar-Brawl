@@ -16,7 +16,7 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
   const [mode, setMode] = useState<'menu' | 'quick' | 'create_private' | 'join_private'>('menu')
   const [status, setStatus] = useState('')
   const [joinCode, setJoinCode] = useState('')
-  const [myCode] = useState('')
+  const [myCode, setMyCode] = useState('')
   const [copied, setCopied] = useState(false)
 
   const handleCopyCode = () => {
@@ -46,10 +46,21 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
        }, 1500);
     });
 
+    socket.on('private_created', (data: any) => {
+       setMyCode(data.code);
+       setStatus('Waiting for friend to join...');
+    });
+
+    socket.on('join_error', (data: any) => {
+       setStatus(data.message);
+    });
+
     return () => {
       socket.off('connect');
       socket.off('waiting_for_opponent');
       socket.off('match_found');
+      socket.off('private_created');
+      socket.off('join_error');
       socket.disconnect();
     }
   }, [userId, onMatchFound])
@@ -62,15 +73,15 @@ export default function MatchmakingScreen({ playerData, userId, onMatchFound, on
 
   const createPrivateRoom = () => {
     setMode('create_private');
-    // For simplicity, private rooms can be added to server logic later, 
-    // for now we just use quick match queue and pretend it's finding.
-    setStatus('Private rooms not fully implemented yet in socket server.');
+    setStatus('Creating room...');
+    socket.emit('create_private', playerData);
   }
 
   const joinPrivateRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinCode) return;
-    setStatus('Private rooms not fully implemented yet.');
+    setStatus('Joining room...');
+    socket.emit('join_private', { code: joinCode, playerData });
   }
 
   const cancelMatchmaking = () => {
