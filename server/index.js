@@ -132,6 +132,25 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Client throws a stone
+  socket.on('throw_stone', (data) => {
+    const roomId = socket.roomId;
+    if (roomId && rooms[roomId]) {
+       io.to(roomId).emit('stone_thrown', { ...data, ownerId: socket.id });
+    }
+  });
+
+  socket.on('stone_hit', (data) => {
+     const roomId = socket.roomId;
+     if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase2') {
+        const victimId = data.targetId;
+        if (rooms[roomId].radarOwner === victimId) {
+            rooms[roomId].radarOwner = null;
+            io.to(roomId).emit('radar_dropped', { x: data.x, y: data.y });
+        }
+     }
+  });
+
   // Client triggers a trap
   socket.on('trigger_trap', (trapId) => {
     const roomId = socket.roomId;
@@ -184,6 +203,22 @@ io.on('connection', (socket) => {
            rooms[roomId].players[socket.id].hasTreasure = true;
            io.to(roomId).emit('treasure_stolen', { newOwnerId: socket.id, victimId });
         }
+
+        // Steal Radar (Phase 2)
+        if (rooms[roomId].phase === 'phase2' && rooms[roomId].radarOwner === victimId) {
+            rooms[roomId].radarOwner = socket.id;
+            io.to(roomId).emit('radar_owner_changed', socket.id);
+        }
+     }
+  });
+
+  socket.on('pickup_radar', () => {
+     const roomId = socket.roomId;
+     if (roomId && rooms[roomId] && rooms[roomId].phase === 'phase2') {
+         if (!rooms[roomId].radarOwner) {
+             rooms[roomId].radarOwner = socket.id;
+             io.to(roomId).emit('radar_owner_changed', socket.id);
+         }
      }
   });
 
@@ -223,8 +258,15 @@ function startPhase2(roomId) {
   const room = rooms[roomId];
   if(!room) return;
   room.phase = 'phase2';
+  room.radarOwner = null;
   io.to(roomId).emit('phase_changed', { phase: 'phase2' });
-  // No timer, waits until real treasure is found
+  
+  // Spawn radar item in the center after 1 second
+  setTimeout(() => {
+     if (rooms[roomId] && rooms[roomId].phase === 'phase2') {
+         io.to(roomId).emit('spawn_radar', { x: 400, y: 300 });
+     }
+  }, 1000);
 }
 
 function startPhase3(roomId, finderId) {

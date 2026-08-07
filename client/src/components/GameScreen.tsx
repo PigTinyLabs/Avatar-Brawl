@@ -63,7 +63,7 @@ export default function GameScreen({ playerData, roomData, onGameOver }: GameScr
           default: 'matter',
           matter: {
             gravity: { y: 0, x: 0 }, // top-down perspective, zero gravity
-            debug: true
+            debug: false
           }
         },
         scale: {

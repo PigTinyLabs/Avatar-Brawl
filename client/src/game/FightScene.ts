@@ -88,6 +88,7 @@ export default class FightScene extends Phaser.Scene {
   private socket!: any;
   private onGameOver!: (winner: string | null) => void;
 
+  private keys!: { W: any; A: any; S: any; D: any; J: any; K: any; SPACE: any; E: any; F: any; Q: any };
   private myPlayer!: any;
   private opponentPlayer!: any;
   private myHead!: Phaser.GameObjects.Image;
@@ -97,8 +98,6 @@ export default class FightScene extends Phaser.Scene {
   private phaseText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   
-  private keys!: any;
-
   private phase: string = 'wait';
   private phaseEndTime: number = 0;
   private isBurned = false;
@@ -112,6 +111,12 @@ export default class FightScene extends Phaser.Scene {
   private radarArrow!: Phaser.GameObjects.Image;
   private lastRadarTime: number = 0;
   private lastBananaThrow: number = 0;
+  private hasRadar: boolean = false;
+  private radarItem: Phaser.Physics.Matter.Sprite | null = null;
+  private lastDashTime: number = 0;
+  private lastInvisTime: number = 0;
+  private lastStoneTime: number = 0;
+  private isInvisible: boolean = false;
 
   constructor() {
     super({ key: 'FightScene' });
@@ -119,6 +124,10 @@ export default class FightScene extends Phaser.Scene {
 
   init() {
     this.myId = this.registry.get('myId');
+    this.load.image('trap_banana', 'https://labs.phaser.io/assets/sprites/banana.png');
+    this.load.image('trap_fake', 'https://labs.phaser.io/assets/sprites/mine.png');
+    this.load.image('trap_real', 'https://labs.phaser.io/assets/sprites/gem.png');
+    this.load.image('radar_icon', 'https://labs.phaser.io/assets/sprites/star.png');
     this.initialRoomState = this.registry.get('initialRoomState');
     this.socket = this.registry.get('socket');
     this.onGameOver = this.registry.get('onGameOver');
@@ -166,12 +175,11 @@ export default class FightScene extends Phaser.Scene {
     g.generateTexture('radar_arrow', 45, 35);
     g.clear();
 
-    // Banana
-    g.fillStyle(0xFFFF00, 1); g.fillEllipse(15, 10, 15, 5); g.generateTexture('trap_banana', 30, 20); g.clear();
-    // Fake Treasure
-    g.fillStyle(0xFF0000, 1); g.fillRect(0, 0, 30, 30); g.generateTexture('trap_fake', 30, 30); g.clear();
-    // Real Treasure
-    g.fillStyle(0xFFD700, 1); g.fillCircle(15, 15, 10); g.generateTexture('trap_real', 30, 30); g.clear();
+    // Stone
+    g.fillStyle(0x888888, 1);
+    g.fillCircle(5, 5, 5);
+    g.generateTexture('item_stone', 10, 10);
+    g.clear();
     
     // Grid Background
     g.lineStyle(1, 0x2d5a1b, 1);
@@ -251,16 +259,7 @@ export default class FightScene extends Phaser.Scene {
     this.minimap.setAlpha(0.7);
 
     if (this.input.keyboard) {
-        this.keys = {
-            W: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-            A: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-            S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-            D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-            SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
-            J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
-            K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
-            Q: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
-        };
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,J,K,SPACE,E,F,Q') as any;
     }
 
     this.phaseText = this.add.text(this.scale.width / 2, 40, this.isTraining ? 'TRAINING' : 'WAITING FOR PLAYERS', { fontSize: '28px', color: '#fff', stroke: '#000', strokeThickness: 4 }).setScrollFactor(0).setOrigin(0.5).setDepth(20);
@@ -277,11 +276,11 @@ export default class FightScene extends Phaser.Scene {
         event.pairs.forEach((pair: any) => {
             const bodyA = pair.bodyA;
             const bodyB = pair.bodyB;
-            console.log("COLLISION START", bodyA.label, bodyB.label);
-            if (bodyA.label === 'my_player') { this.checkTrapCollision(bodyB); this.checkAttackCollision(bodyB); } 
-            else if (bodyB.label === 'my_player') { this.checkTrapCollision(bodyA); this.checkAttackCollision(bodyA); }
+            if (bodyA.label === 'my_player') { this.checkTrapCollision(bodyB); this.checkAttackCollision(bodyB); this.checkRadarPickup(bodyB); } 
+            else if (bodyB.label === 'my_player') { this.checkTrapCollision(bodyA); this.checkAttackCollision(bodyA); this.checkRadarPickup(bodyA); }
             
             this.checkThrownBananaCollision(bodyA, bodyB);
+            this.checkThrownStoneCollision(bodyA, bodyB);
         });
     });
 
@@ -337,14 +336,18 @@ export default class FightScene extends Phaser.Scene {
     
     this.socket.on('phase_changed', (data: any) => {
         this.phase = data.phase;
+        this.hasRadar = false;
+        if (this.phase === 'phase1') this.phaseText.setText('PHASE 1: CHƠI DƠ');
+        if (this.phase === 'phase2') {
+            this.phaseText.setText('PHASE 2: DÒ MÌN');
+            this.tutorialInstruction.setText('MỘT CHIẾC RADAR SẼ XUẤT HIỆN Ở GIỮA BẢN ĐỒ!\nHÃY CHẠY RA GIỮA LẤY NÓ ĐỂ TÌM CHÌA KHÓA!');
+        }
+        if (this.phase === 'phase3') this.phaseText.setText('PHASE 3: HỦY DIỆT');
         if (data.timeLimit) {
             this.phaseEndTime = this.time.now + data.timeLimit;
         } else {
             this.phaseEndTime = 0;
         }
-        if (this.phase === 'phase1') this.phaseText.setText('PHASE 1: CHƠI DƠ');
-        if (this.phase === 'phase2') this.phaseText.setText('PHASE 2: DÒ MÌN');
-        if (this.phase === 'phase3') this.phaseText.setText('PHASE 3: HỦY DIỆT');
     });
 
     this.socket.on('treasure_stolen', (data: any) => {
@@ -404,9 +407,16 @@ export default class FightScene extends Phaser.Scene {
     });
 
     this.socket.on('opponent_sync', (data: any) => {
-       if (data.id !== this.myId && this.opponentPlayer) {
-           this.matter.body.setPosition(this.opponentPlayer.body, { x: data.state.x, y: data.state.y });
-       }
+        if (!this.opponentPlayer || this.opponentPlayer.id !== data.id) return;
+        this.opponentPlayer.body.position.x = data.state.x;
+        this.opponentPlayer.body.position.y = data.state.y;
+
+        if (data.state.isInvisible !== undefined) {
+            const alpha = data.state.isInvisible ? 0 : 1;
+            if (this.opponentHead) this.opponentHead.setAlpha(alpha);
+            if (this.opponentPlayer.bodyGraphics) this.opponentPlayer.bodyGraphics.setAlpha(alpha);
+            if (this.opponentPlayer.hpText) this.opponentPlayer.hpText.setAlpha(alpha);
+        }
     });
 
     this.socket.on('trap_placed', (trap: any) => {
@@ -443,6 +453,72 @@ export default class FightScene extends Phaser.Scene {
     this.socket.on('banana_thrown', (data: any) => {
         this.spawnThrownBanana(data.x, data.y, data.vx, data.vy, data.ownerId);
     });
+
+    this.socket.on('spawn_radar', (data: any) => {
+        this.spawnRadarItem(data.x, data.y);
+    });
+
+    this.socket.on('radar_owner_changed', (ownerId: string) => {
+        if (this.radarItem && this.radarItem.active) {
+            this.radarItem.destroy();
+            this.radarItem = null;
+        }
+        
+        if (ownerId === this.myId) {
+            this.hasRadar = true;
+            this.tutorialInstruction.setText('BẠN ĐÃ CÓ RADAR!\nHÃY ĐI TÌM CHÌA KHÓA CỦA ĐỐI PHƯƠNG (NGÔI SAO DƯỚI CHÂN)');
+        } else {
+            this.hasRadar = false;
+            this.tutorialInstruction.setText('ĐỐI THỦ ĐÃ LẤY RADAR!\nHÃY TÌM VÀ NÉM ĐÁ (F) ĐỂ CƯỚP LẠI!');
+        }
+    });
+
+    this.socket.on('stone_thrown', (data: any) => {
+        this.spawnThrownStone(data.x, data.y, data.vx, data.vy, data.ownerId);
+    });
+
+    this.socket.on('radar_dropped', (data: any) => {
+        if (this.hasRadar) {
+            this.hasRadar = false;
+            this.tutorialInstruction.setText('RADAR ĐÃ BỊ RỚT! HÃY CHẠY ĐẾN NHẶT LẠI!');
+        }
+        this.spawnRadarItem(data.x, data.y);
+    });
+  }
+
+  spawnRadarItem(x: number, y: number) {
+      if (this.radarItem) this.radarItem.destroy();
+      this.radarItem = this.matter.add.sprite(x, y, 'radar_icon', undefined, {
+          isSensor: true,
+          isStatic: true,
+          label: 'radar_pickup'
+      });
+      this.radarItem.setDepth(6);
+      
+      this.tweens.add({
+          targets: this.radarItem,
+          y: y - 10,
+          yoyo: true,
+          repeat: -1,
+          duration: 1000,
+          ease: 'Sine.easeInOut'
+      });
+  }
+
+  checkRadarPickup(body: any) {
+      if (body.label === 'radar_pickup' && this.phase === 'phase2') {
+          if (!this.isTraining) {
+              this.socket.emit('pickup_radar');
+          } else {
+              // Training mode auto pickup
+              if (this.radarItem && this.radarItem.active) {
+                  this.radarItem.destroy();
+                  this.radarItem = null;
+              }
+              this.hasRadar = true;
+              this.tutorialInstruction.setText('BẠN ĐÃ CÓ RADAR!\nHÃY ĐI TÌM CHÌA KHÓA!');
+          }
+      }
   }
 
   spawnThrownBanana(x: number, y: number, vx: number, vy: number, ownerId: string) {
@@ -457,6 +533,20 @@ export default class FightScene extends Phaser.Scene {
       sprite.setAngularVelocity(0.3);
       
       this.time.delayedCall(3000, () => {
+          if (sprite && sprite.active) sprite.destroy();
+      });
+  }
+
+  spawnThrownStone(x: number, y: number, vx: number, vy: number, ownerId: string) {
+      const sprite = this.matter.add.image(x, y, 'item_stone', undefined, { 
+          frictionAir: 0,
+          label: `thrown_stone_${ownerId}`,
+          isSensor: true
+      });
+      sprite.setDepth(15);
+      this.matter.body.setVelocity(sprite.body as any, { x: vx, y: vy });
+      
+      this.time.delayedCall(2000, () => {
           if (sprite && sprite.active) sprite.destroy();
       });
   }
@@ -488,6 +578,37 @@ export default class FightScene extends Phaser.Scene {
           }
       } else if (otherBody.label === 'obstacle') {
           if (bananaBody.gameObject) bananaBody.gameObject.destroy();
+      }
+  }
+
+  checkThrownStoneCollision(bodyA: any, bodyB: any) {
+      const isStoneA = bodyA.label && bodyA.label.startsWith('thrown_stone_');
+      const isStoneB = bodyB.label && bodyB.label.startsWith('thrown_stone_');
+      
+      if (!isStoneA && !isStoneB) return;
+      
+      const stoneBody = isStoneA ? bodyA : bodyB;
+      const otherBody = isStoneA ? bodyB : bodyA;
+      
+      if (otherBody.label === 'my_player' || otherBody.label === 'opp_player') {
+          const ownerId = stoneBody.label.replace('thrown_stone_', '');
+          const victimIsMe = otherBody.label === 'my_player';
+          
+          if (victimIsMe && ownerId !== this.myId) {
+              this.isStunned = true;
+              this.myHead.setTint(0xFF0000);
+              setTimeout(() => { this.isStunned = false; this.myHead.clearTint(); }, 1000);
+              
+              if (this.phase === 'phase2' && this.hasRadar && !this.isTraining) {
+                  this.socket.emit('stone_hit', { targetId: this.myId, x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y });
+              }
+              
+              if (stoneBody.gameObject) stoneBody.gameObject.destroy();
+          } else if (!victimIsMe && ownerId === this.myId) {
+              if (stoneBody.gameObject) stoneBody.gameObject.destroy();
+          }
+      } else if (otherBody.label === 'obstacle') {
+          if (stoneBody.gameObject) stoneBody.gameObject.destroy();
       }
   }
 
@@ -588,14 +709,14 @@ export default class FightScene extends Phaser.Scene {
   update(time: number, _delta: number) {
     if (!this.myPlayer || !this.myHead || !this.opponentHead) return;
 
-    this.myHead.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
-    if (this.myPlayer.maskShape) this.myPlayer.maskShape.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 10);
+    this.myHead.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
+    if (this.myPlayer.maskShape) this.myPlayer.maskShape.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
     this.myPlayer.bodyGraphics.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y);
     this.myPlayer.hpText.setPosition(this.myPlayer.body.position.x, this.myPlayer.body.position.y - 45);
 
     if (this.opponentPlayer) {
-        this.opponentHead.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
-        if (this.opponentPlayer.maskShape) this.opponentPlayer.maskShape.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 10);
+        this.opponentHead.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
+        if (this.opponentPlayer.maskShape) this.opponentPlayer.maskShape.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
         this.opponentPlayer.bodyGraphics.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y);
         this.opponentPlayer.hpText.setPosition(this.opponentPlayer.body.position.x, this.opponentPlayer.body.position.y - 45);
     }
@@ -647,7 +768,7 @@ export default class FightScene extends Phaser.Scene {
     if (this.opponentPlayer) this.matter.body.setAngle(this.opponentPlayer.body, 0);
 
     // Radar Logic for Phase 2
-    if (this.phase === 'phase2' && !this.myPlayer.hasKey) {
+    if (this.phase === 'phase2' && !this.myPlayer.hasKey && this.hasRadar) {
         let realTreasure = this.traps.find(t => t.getData('trapData').type === 'real_treasure' && t.getData('trapData').ownerId !== this.myId);
         if (realTreasure) {
             if (time > this.lastRadarTime + 5000) {
@@ -738,7 +859,10 @@ export default class FightScene extends Phaser.Scene {
                     this.phase = 'phase2';
                     this.phaseText.setText('PHASE 2: DÒ MÌN');
                     this.phaseEndTime = this.time.now + 60000;
-                    this.tutorialInstruction.setText('Tuyệt! Bây giờ Chìa Khóa đã TÀNG HÌNH.\nHãy dùng Radar tìm nó, sau đó chạy lên CỬA (EXIT)!');
+                    this.tutorialInstruction.setText('Tuyệt! Bây giờ Chìa Khóa đã TÀNG HÌNH.\nMỘT CHIẾC RADAR (NGÔI SAO) SẼ XUẤT HIỆN Ở GIỮA BẢN ĐỒ. HÃY NHẶT NÓ!');
+                    setTimeout(() => {
+                        this.spawnRadarItem(400, 300);
+                    }, 1000);
                 }, 2000);
             }
         } else if (this.phase === 'phase3') {
@@ -789,8 +913,81 @@ export default class FightScene extends Phaser.Scene {
 
     if (time % 50 < 16) { 
         this.socket.emit('sync_state', {
-            state: { x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y }
+            state: { x: this.myPlayer.body.position.x, y: this.myPlayer.body.position.y, isInvisible: this.isInvisible }
         });
     }
+
+    if (this.isStunned || this.phase === 'wait') return;
+
+    // ----- NEW SKILLS ----- //
+    // Dash (SPACE)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+        if (time > this.lastDashTime + 4000) {
+            this.lastDashTime = time;
+            let dashDx = 0, dashDy = 0;
+            if (this.keys.W.isDown) dashDy = -1;
+            if (this.keys.S.isDown) dashDy = 1;
+            if (this.keys.A.isDown) dashDx = -1;
+            if (this.keys.D.isDown) dashDx = 1;
+            
+            if (dashDx === 0 && dashDy === 0) {
+                dashDx = this.myPlayer.isLeft ? -1 : 1;
+            }
+            
+            const len = Math.sqrt(dashDx*dashDx + dashDy*dashDy);
+            dashDx = (dashDx/len) * 30;
+            dashDy = (dashDy/len) * 30;
+            
+            this.matter.body.setVelocity(this.myPlayer.body, { x: dashDx, y: dashDy });
+        }
+    }
+
+    // Invisibility (E)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.E)) {
+        if (time > this.lastInvisTime + 10000) {
+            this.lastInvisTime = time;
+            this.isInvisible = true;
+            this.myHead.setAlpha(0.3);
+            this.myPlayer.bodyGraphics.setAlpha(0.3);
+            
+            this.time.delayedCall(3000, () => {
+                this.isInvisible = false;
+                this.myHead.setAlpha(1);
+                this.myPlayer.bodyGraphics.setAlpha(1);
+            });
+        }
+    }
+
+    // Throw Stone (F)
+    if (Phaser.Input.Keyboard.JustDown(this.keys.F)) {
+        if (time > this.lastStoneTime + 5000) {
+            this.lastStoneTime = time;
+            let targetX = this.opponentPlayer ? this.opponentPlayer.body.position.x : this.myPlayer.body.position.x + 10;
+            let targetY = this.opponentPlayer ? this.opponentPlayer.body.position.y : this.myPlayer.body.position.y;
+            const angle = Phaser.Math.Angle.Between(
+                this.myPlayer.body.position.x, this.myPlayer.body.position.y,
+                targetX, targetY
+            );
+            const speed = 25;
+            this.socket.emit('throw_stone', {
+                x: this.myPlayer.body.position.x,
+                y: this.myPlayer.body.position.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed
+            });
+        }
+    }
+    // ---------------------- //
+
+    let vx = 0;
+    let vy = 0;
+    const speed = this.myPlayer.hasKey ? 6 : 4;
+    
+    if (this.keys.W.isDown) vy = -speed;
+    else if (this.keys.S.isDown) vy = speed;
+    if (this.keys.A.isDown) vx = -speed;
+    else if (this.keys.D.isDown) vx = speed;
+
+    this.matter.body.setVelocity(this.myPlayer.body, { x: vx, y: vy });
   }
 }
