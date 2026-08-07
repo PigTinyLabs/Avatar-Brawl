@@ -979,15 +979,5 @@ export default class FightScene extends Phaser.Scene {
     }
     // ---------------------- //
 
-    let vx = 0;
-    let vy = 0;
-    const speed = this.myPlayer.hasKey ? 6 : 4;
-    
-    if (this.keys.W.isDown) vy = -speed;
-    else if (this.keys.S.isDown) vy = speed;
-    if (this.keys.A.isDown) vx = -speed;
-    else if (this.keys.D.isDown) vx = speed;
-
-    this.matter.body.setVelocity(this.myPlayer.body, { x: vx, y: vy });
   }
 }
