@@ -12,7 +12,28 @@ permissions:
   id-token: write
 
 jobs:
+  # Job 1: Kiểm tra xem thư mục nào có sự thay đổi code
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'server/**'
+            frontend:
+              - 'client/**'
+              - '.github/workflows/**'
+
+  # Job 2: Deploy Backend (Chỉ chạy khi có thay đổi trong thư mục server/)
   deploy-backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy Hook (Backend)
@@ -26,8 +47,11 @@ jobs:
           echo "Đợi 60 giây để Backend khởi động xong..."
           sleep 60
 
+  # Job 3: Deploy Frontend (Chỉ chạy khi có thay đổi trong thư mục client/ hoặc workflow)
   deploy-frontend:
-    needs: deploy-backend
+    needs: [changes, deploy-backend]
+    # 'always()' đảm bảo nó chạy kể cả khi job deploy-backend bị skip, nhưng vẫn phải thoả mãn điều kiện frontend == true
+    if: ${{ always() && needs.changes.outputs.frontend == 'true' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
