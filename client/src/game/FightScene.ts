@@ -446,7 +446,7 @@ export default class FightScene extends Phaser.Scene {
   }
 
   spawnThrownBanana(x: number, y: number, vx: number, vy: number, ownerId: string) {
-      const sprite = this.matter.add.image(x, y, 'trap_banana', null, { 
+      const sprite = this.matter.add.image(x, y, 'trap_banana', undefined, { 
           frictionAir: 0.05,
           label: `thrown_banana_${ownerId}`,
           isSensor: true
@@ -494,7 +494,7 @@ export default class FightScene extends Phaser.Scene {
   placeTrapLocal(type: string, x: number, y: number, id?: string, ownerId?: string) {
       const newId = id || Math.random().toString();
       const tex = type === 'banana' ? 'trap_banana' : type === 'fake_treasure' ? 'trap_fake' : 'trap_real';
-      const sprite = this.matter.add.image(x, y, tex, null, { isStatic: true, isSensor: true, label: `trap_${newId}` });
+      const sprite = this.matter.add.image(x, y, tex, undefined, { isStatic: true, isSensor: true, label: `trap_${newId}` });
       sprite.setDepth(7);
       sprite.setData('trapData', { id: newId, type, ownerId: ownerId || this.myId });
       
