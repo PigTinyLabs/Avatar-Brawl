@@ -524,6 +524,11 @@ export default class FightScene extends Phaser.Scene {
                   return;
               }
 
+              // Prevent triggering your own real treasure
+              if (trapData.type === 'real_treasure' && trapData.ownerId === this.myId) {
+                  return;
+              }
+
               if (!this.isTraining) {
                   this.socket.emit('trigger_trap', trapId);
               } else {
@@ -643,7 +648,7 @@ export default class FightScene extends Phaser.Scene {
 
     // Radar Logic for Phase 2
     if (this.phase === 'phase2' && !this.myPlayer.hasKey) {
-        let realTreasure = this.traps.find(t => t.getData('trapData').type === 'real_treasure');
+        let realTreasure = this.traps.find(t => t.getData('trapData').type === 'real_treasure' && t.getData('trapData').ownerId !== this.myId);
         if (realTreasure) {
             if (time > this.lastRadarTime + 5000) {
                 this.lastRadarTime = time;
